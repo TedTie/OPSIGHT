@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>前端错误检测</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .error-log {
+            background: #f8f8f8;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .test-button {
+            background: #409eff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .test-button:hover {
+            background: #337ecc;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .status.success {
+            background: #f0f9ff;
+            border: 1px solid #67c23a;
+            color: #67c23a;
+        }
+        .status.error {
+            background: #fef0f0;
+            border: 1px solid #f56c6c;
+            color: #f56c6c;
+        }
+        .iframe-container {
+            margin: 20px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        iframe {
+            width: 100%;
+            height: 600px;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 前端错误检测工具</h1>
+        
+        <div class="test-section">
+            <h2>测试控制</h2>
+            <button class="test-button" onclick="testFrontendAccess()">测试前端访问</button>
+            <button class="test-button" onclick="testAPIConnection()">测试API连接</button>
+            <button class="test-button" onclick="clearLogs()">清除日志</button>
+            <button class="test-button" onclick="loadInIframe()">在iframe中加载</button>
+        </div>
+        
+        <div id="status" class="status"></div>
+        
+        <h2>错误日志</h2>
+        <div id="errorLog" class="error-log">等待测试...</div>
+        
+        <h2>网络请求日志</h2>
+        <div id="networkLog" class="error-log">等待测试...</div>
+        
+        <div id="iframeContainer" class="iframe-container" style="display: none;">
+            <h2>应用预览</h2>
+            <iframe id="appIframe" src=""></iframe>
+        </div>
+    </div>
+
+    <script>
+        let errorLog = document.getElementById('errorLog');
+        let networkLog = document.getElementById('networkLog');
+        let status = document.getElementById('status');
+        
+        // 捕获所有错误
+        window.addEventListener('error', function(e) {
+            logError('JavaScript Error: ' + e.message + ' at ' + e.filename + ':' + e.lineno);
+        });
+        
+        window.addEventListener('unhandledrejection', function(e) {
+            logError('Unhandled Promise Rejection: ' + e.reason);
+        });
+        
+        function logError(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            errorLog.textContent += `[${timestamp}] ${message}\n`;
+            errorLog.scrollTop = errorLog.scrollHeight;
+        }
+        
+        function logNetwork(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            networkLog.textContent += `[${timestamp}] ${message}\n`;
+            networkLog.scrollTop = networkLog.scrollHeight;
+        }
+        
+        function setStatus(message, type) {
+            status.textContent = message;
+            status.className = 'status ' + type;
+        }
+        
+        function clearLogs() {
+            errorLog.textContent = '';
+            networkLog.textContent = '';
+            setStatus('日志已清除', 'success');
+        }
+        
+        async function testFrontendAccess() {
+            setStatus('正在测试前端访问...', 'success');
+            logNetwork('开始测试前端访问');
+            
+            try {
+                const response = await fetch('http://localhost:3001/', {
+                    method: 'GET',
+                    mode: 'cors'
+                });
+                
+                if (response.ok) {
+                    logNetwork(`前端访问成功: ${response.status} ${response.statusText}`);
+                    setStatus('前端访问正常', 'success');
+                } else {
+                    logNetwork(`前端访问失败: ${response.status} ${response.statusText}`);
+                    setStatus('前端访问异常', 'error');
+                }
+            } catch (error) {
+                logError('前端访问错误: ' + error.message);
+                setStatus('前端访问失败', 'error');
+            }
+        }
+        
+        async function testAPIConnection() {
+            setStatus('正在测试API连接...', 'success');
+            logNetwork('开始测试API连接');
+            
+            try {
+                // 测试健康检查
+                const healthResponse = await fetch('http://localhost:8001/api/v1/auth/check', {
+                    method: 'GET',
+                    mode: 'cors',
+                    credentials: 'include'
+                });
+                
+                logNetwork(`API健康检查: ${healthResponse.status} ${healthResponse.statusText}`);
+                
+                // 测试登录
+                const loginResponse = await fetch('http://localhost:8001/api/v1/auth/login', {
+                    method: 'POST',
+                    mode: 'cors',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: 'admin',
+                        password: 'admin123'
+                    })
+                });
+                
+                logNetwork(`API登录测试: ${loginResponse.status} ${loginResponse.statusText}`);
+                
+                if (loginResponse.ok) {
+                    setStatus('API连接正常', 'success');
+                } else {
+                    setStatus('API连接异常', 'error');
+                }
+                
+            } catch (error) {
+                logError('API连接错误: ' + error.message);
+                setStatus('API连接失败', 'error');
+            }
+        }
+        
+        function loadInIframe() {
+            const iframeContainer = document.getElementById('iframeContainer');
+            const iframe = document.getElementById('appIframe');
+            
+            iframe.src = 'http://localhost:3001/';
+            iframeContainer.style.display = 'block';
+            
+            iframe.onload = function() {
+                logNetwork('应用在iframe中加载成功');
+                setStatus('应用已在iframe中加载', 'success');
+            };
+            
+            iframe.onerror = function() {
+                logError('应用在iframe中加载失败');
+                setStatus('应用iframe加载失败', 'error');
+            };
+        }
+        
+        // 自动开始测试
+        setTimeout(() => {
+            testFrontendAccess();
+        }, 1000);
+    </script>
+</body>
+</html>

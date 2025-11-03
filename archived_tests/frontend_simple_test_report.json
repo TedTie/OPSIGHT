@@ -1,0 +1,55 @@
+{
+  "timestamp": "2025-10-30 13:25:44",
+  "test_type": "前端简化测试",
+  "total_tests": 9,
+  "passed": 9,
+  "failed": 0,
+  "success_rate": "100.0%",
+  "test_results": [
+    {
+      "test": "后端API连通性",
+      "status": "PASS",
+      "message": "后端API正常响应"
+    },
+    {
+      "test": "主页页面访问",
+      "status": "PASS",
+      "message": "页面正常访问，状态码: 200"
+    },
+    {
+      "test": "主页内容分析",
+      "status": "PASS",
+      "message": "标题: OPSIGHT - æºè½ä»»å¡ä¸æ¥æ¥ç®¡çç³»ç», JS文件: 2个, CSS文件: 0个"
+    },
+    {
+      "test": "静态资源访问",
+      "status": "PASS",
+      "message": "可访问3个静态资源路径"
+    },
+    {
+      "test": "Dashboard页面页面访问",
+      "status": "PASS",
+      "message": "页面正常访问，状态码: 200"
+    },
+    {
+      "test": "Analytics页面页面访问",
+      "status": "PASS",
+      "message": "页面正常访问，状态码: 200"
+    },
+    {
+      "test": "任务页面页面访问",
+      "status": "PASS",
+      "message": "页面正常访问，状态码: 200"
+    },
+    {
+      "test": "用户页面页面访问",
+      "status": "PASS",
+      "message": "页面正常访问，状态码: 200"
+    },
+    {
+      "test": "报告页面页面访问",
+      "status": "PASS",
+      "message": "页面正常访问，状态码: 200"
+    }
+  ]
+}

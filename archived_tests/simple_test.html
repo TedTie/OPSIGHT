@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简单网络测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; }
+        input { padding: 8px; margin: 5px; width: 200px; }
+        .login-form { background: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h1>简单网络测试</h1>
+    
+    <div class="login-form">
+        <h3>登录测试</h3>
+        <input type="text" id="username" placeholder="用户名" value="admin">
+        <button onclick="testLogin()">测试登录</button>
+    </div>
+    
+    <button onclick="testHealth()">健康检查</button>
+    <button onclick="testAuth()">认证检查</button>
+    <button onclick="clearResults()">清除结果</button>
+    
+    <div id="results"></div>
+
+    <script>
+        function addResult(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = new Date().toLocaleTimeString() + ': ' + message;
+            document.getElementById('results').appendChild(div);
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        async function testHealth() {
+            addResult('🔍 测试健康检查...', 'info');
+            
+            try {
+                const response = await fetch('http://localhost:8000/health', {
+                    method: 'GET'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                addResult(`✅ 健康检查成功: ${JSON.stringify(data)}`, 'success');
+            } catch (error) {
+                addResult(`❌ 健康检查失败: ${error.message}`, 'error');
+                console.error('Health check error:', error);
+            }
+        }
+
+        async function testAuth() {
+            addResult('🔍 测试认证检查...', 'info');
+            
+            try {
+                const response = await fetch('http://localhost:8000/api/v1/auth/check', {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                addResult(`✅ 认证检查成功: ${JSON.stringify(data)}`, 'success');
+            } catch (error) {
+                addResult(`❌ 认证检查失败: ${error.message}`, 'error');
+                console.error('Auth check error:', error);
+            }
+        }
+
+        async function testLogin() {
+            const username = document.getElementById('username').value;
+            if (!username) {
+                addResult('❌ 请输入用户名', 'error');
+                return;
+            }
+            
+            addResult(`🔍 测试登录 (用户: ${username})...`, 'info');
+            
+            try {
+                const response = await fetch('http://localhost:8000/api/v1/auth/login', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username: username })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                addResult(`✅ 登录成功: ${JSON.stringify(data)}`, 'success');
+            } catch (error) {
+                addResult(`❌ 登录失败: ${error.message}`, 'error');
+                console.error('Login error:', error);
+            }
+        }
+
+        // 页面加载时自动测试
+        window.onload = () => {
+            addResult('📍 页面加载完成', 'info');
+            addResult(`🌐 当前地址: ${window.location.href}`, 'info');
+            addResult(`🎯 后端地址: http://localhost:8000`, 'info');
+            
+            // 自动运行健康检查
+            setTimeout(testHealth, 1000);
+        };
+    </script>
+</body>
+</html>

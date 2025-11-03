@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>控制台网络测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .code { background: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0; }
+        .instruction { background: #e7f3ff; padding: 10px; border-radius: 5px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>浏览器控制台网络测试</h1>
+    <p>请打开浏览器开发者工具的控制台，然后运行以下代码：</p>
+    
+    <div class="instruction">
+        <strong>步骤1：</strong> 按F12打开开发者工具，切换到Console标签
+    </div>
+    
+    <div class="instruction">
+        <strong>步骤2：</strong> 复制并运行以下代码测试基础连接：
+    </div>
+    
+    <div class="code">
+        <pre>
+// 测试1: 基础fetch
+fetch('http://localhost:8000/health')
+  .then(response => response.json())
+  .then(data => console.log('✅ 健康检查成功:', data))
+  .catch(error => console.error('❌ 健康检查失败:', error));
+        </pre>
+    </div>
+    
+    <div class="instruction">
+        <strong>步骤3：</strong> 如果步骤2成功，运行以下代码测试CORS：
+    </div>
+    
+    <div class="code">
+        <pre>
+// 测试2: CORS测试
+fetch('http://localhost:8000/api/v1/auth/check', {
+  method: 'GET',
+  credentials: 'include',
+  headers: {
+    'Content-Type': 'application/json'
+  }
+})
+.then(response => response.json())
+.then(data => console.log('✅ CORS测试成功:', data))
+.catch(error => console.error('❌ CORS测试失败:', error));
+        </pre>
+    </div>
+    
+    <div class="instruction">
+        <strong>步骤4：</strong> 如果步骤3成功，运行以下代码测试登录：
+    </div>
+    
+    <div class="code">
+        <pre>
+// 测试3: 登录测试
+fetch('http://localhost:8000/api/v1/auth/login', {
+  method: 'POST',
+  credentials: 'include',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({ username: 'admin' })
+})
+.then(response => response.json())
+.then(data => console.log('✅ 登录测试成功:', data))
+.catch(error => console.error('❌ 登录测试失败:', error));
+        </pre>
+    </div>
+    
+    <div class="instruction">
+        <strong>步骤5：</strong> 检查Network标签，查看请求是否发送以及响应状态
+    </div>
+    
+    <h2>常见问题排查</h2>
+    <ul>
+        <li>如果看到CORS错误，检查后端CORS配置</li>
+        <li>如果看到网络错误，检查后端服务是否运行</li>
+        <li>如果请求根本没有发送，可能是浏览器安全策略问题</li>
+        <li>检查浏览器是否阻止了混合内容或不安全请求</li>
+    </ul>
+    
+    <script>
+        console.log('🔍 控制台测试页面已加载');
+        console.log('📍 当前页面地址:', window.location.href);
+        console.log('🎯 目标后端地址: http://localhost:8000');
+        console.log('💡 请按照页面上的步骤在控制台中运行测试代码');
+    </script>
+</body>
+</html>

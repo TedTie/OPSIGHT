@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>最终测试 - 代理和登录</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        .warning { background-color: #fff3cd; color: #856404; }
+        button { padding: 10px 20px; margin: 5px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>最终测试 - 代理和登录功能</h1>
+    
+    <div class="test-section">
+        <h3>1. 代理测试</h3>
+        <button onclick="testProxy()">测试代理 (/api/v1/auth/check)</button>
+        <div id="proxy-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>2. 登录测试</h3>
+        <button onclick="testLogin()">测试登录 (admin)</button>
+        <div id="login-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>3. 认证检查</h3>
+        <button onclick="testAuthCheck()">检查认证状态</button>
+        <div id="auth-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>4. 完整流程测试</h3>
+        <button onclick="testFullFlow()">运行完整流程</button>
+        <div id="flow-result"></div>
+    </div>
+
+    <button onclick="clearResults()">清除所有结果</button>
+    
+    <div id="results"></div>
+
+    <script>
+        function addResult(message, type = 'info', targetId = 'results') {
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = new Date().toLocaleTimeString() + ': ' + message;
+            
+            if (targetId === 'results') {
+                document.getElementById('results').appendChild(div);
+            } else {
+                document.getElementById(targetId).innerHTML = div.outerHTML;
+            }
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+            document.getElementById('proxy-result').innerHTML = '';
+            document.getElementById('login-result').innerHTML = '';
+            document.getElementById('auth-result').innerHTML = '';
+            document.getElementById('flow-result').innerHTML = '';
+        }
+
+        async function testProxy() {
+            addResult('🔍 测试代理认证检查...', 'info', 'proxy-result');
+            
+            try {
+                // 通过代理访问 /api/v1/auth/check
+                const response = await fetch('/api/v1/auth/check', {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addResult(`✅ 代理认证检查成功: ${JSON.stringify(data)}`, 'success', 'proxy-result');
+                } else {
+                    addResult(`⚠️ 代理认证检查返回: ${response.status} - ${JSON.stringify(data)}`, 'warning', 'proxy-result');
+                }
+            } catch (error) {
+                addResult(`❌ 代理认证检查失败: ${error.message}`, 'error', 'proxy-result');
+                console.error('Proxy auth check error:', error);
+            }
+        }
+
+        async function testLogin() {
+            addResult('🔍 测试代理登录...', 'info', 'login-result');
+            
+            try {
+                // 通过代理访问 /api/v1/auth/login
+                const response = await fetch('/api/v1/auth/login', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username: 'admin' })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addResult(`✅ 代理登录成功: ${JSON.stringify(data)}`, 'success', 'login-result');
+                } else {
+                    addResult(`❌ 代理登录失败: ${response.status} - ${JSON.stringify(data)}`, 'error', 'login-result');
+                }
+            } catch (error) {
+                addResult(`❌ 代理登录异常: ${error.message}`, 'error', 'login-result');
+                console.error('Proxy login error:', error);
+            }
+        }
+
+        async function testAuthCheck() {
+            addResult('🔍 检查当前认证状态...', 'info', 'auth-result');
+            
+            try {
+                const response = await fetch('/api/v1/auth/check', {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addResult(`✅ 认证状态: ${JSON.stringify(data)}`, 'success', 'auth-result');
+                } else {
+                    addResult(`⚠️ 认证状态: ${response.status} - ${JSON.stringify(data)}`, 'warning', 'auth-result');
+                }
+            } catch (error) {
+                addResult(`❌ 认证检查异常: ${error.message}`, 'error', 'auth-result');
+                console.error('Auth check error:', error);
+            }
+        }
+
+        async function testFullFlow() {
+            addResult('🚀 开始完整流程测试...', 'info', 'flow-result');
+            
+            try {
+                // 1. 先检查认证状态
+                addResult('1️⃣ 检查初始认证状态...', 'info', 'flow-result');
+                let response = await fetch('/api/v1/auth/check', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                let data = await response.json();
+                addResult(`   初始状态: ${JSON.stringify(data)}`, 'info', 'flow-result');
+                
+                // 2. 执行登录
+                addResult('2️⃣ 执行登录...', 'info', 'flow-result');
+                response = await fetch('/api/v1/auth/login', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username: 'admin' })
+                });
+                data = await response.json();
+                
+                if (response.ok) {
+                    addResult(`   登录成功: ${JSON.stringify(data)}`, 'success', 'flow-result');
+                    
+                    // 3. 再次检查认证状态
+                    addResult('3️⃣ 检查登录后认证状态...', 'info', 'flow-result');
+                    response = await fetch('/api/v1/auth/check', {
+                        method: 'GET',
+                        credentials: 'include'
+                    });
+                    data = await response.json();
+                    
+                    if (response.ok) {
+                        addResult(`   登录后状态: ${JSON.stringify(data)}`, 'success', 'flow-result');
+                        addResult('🎉 完整流程测试成功！', 'success', 'flow-result');
+                    } else {
+                        addResult(`   登录后认证检查失败: ${JSON.stringify(data)}`, 'error', 'flow-result');
+                    }
+                } else {
+                    addResult(`   登录失败: ${JSON.stringify(data)}`, 'error', 'flow-result');
+                }
+                
+            } catch (error) {
+                addResult(`❌ 完整流程测试异常: ${error.message}`, 'error', 'flow-result');
+                console.error('Full flow test error:', error);
+            }
+        }
+
+        // 页面加载时自动运行基础测试
+        window.onload = () => {
+            addResult('📍 最终测试页面加载完成', 'info');
+            addResult(`🌐 当前地址: ${window.location.href}`, 'info');
+            addResult(`🔄 代理配置: /api -> http://localhost:8000`, 'info');
+            
+            // 自动运行代理测试
+            setTimeout(testProxy, 1000);
+        };
+    </script>
+</body>
+</html>

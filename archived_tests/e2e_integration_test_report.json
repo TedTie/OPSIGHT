@@ -1,0 +1,295 @@
+{
+  "test_type": "端到端集成测试",
+  "timestamp": "2025-10-30T13:26:06.302495",
+  "summary": {
+    "total_tests": 19,
+    "passed": 16,
+    "failed": 3,
+    "partial": 0,
+    "success_rate": "84.2%"
+  },
+  "categories": {
+    "系统健康": [
+      {
+        "test": "后端健康检查",
+        "status": "PASS",
+        "message": "后端服务正常，状态码: 200",
+        "timestamp": "2025-10-30T13:26:06.192686",
+        "details": null
+      },
+      {
+        "test": "前端健康检查",
+        "status": "PASS",
+        "message": "前端服务正常，状态码: 200",
+        "timestamp": "2025-10-30T13:26:06.208767",
+        "details": null
+      }
+    ],
+    "认证系统": [
+      {
+        "test": "用户登录",
+        "status": "PASS",
+        "message": "登录成功，用户: admin",
+        "timestamp": "2025-10-30T13:26:06.212534",
+        "details": null
+      },
+      {
+        "test": "获取用户信息",
+        "status": "PASS",
+        "message": "成功获取用户信息，用户ID: 1",
+        "timestamp": "2025-10-30T13:26:06.216004",
+        "details": null
+      },
+      {
+        "test": "认证状态检查",
+        "status": "PASS",
+        "message": "认证状态正常",
+        "timestamp": "2025-10-30T13:26:06.218913",
+        "details": null
+      }
+    ],
+    "用户管理": [
+      {
+        "test": "获取用户列表",
+        "status": "PASS",
+        "message": "成功获取用户列表，用户数量: 3",
+        "timestamp": "2025-10-30T13:26:06.234803",
+        "details": null
+      },
+      {
+        "test": "获取特定用户",
+        "status": "PASS",
+        "message": "成功获取用户详情，用户名: admin",
+        "timestamp": "2025-10-30T13:26:06.238504",
+        "details": null
+      },
+      {
+        "test": "前端用户管理页面",
+        "status": "PASS",
+        "message": "页面正常加载且包含Vue应用",
+        "timestamp": "2025-10-30T13:26:06.295026",
+        "details": null
+      }
+    ],
+    "任务管理": [
+      {
+        "test": "获取任务列表",
+        "status": "PASS",
+        "message": "成功获取任务列表，任务数量: 2",
+        "timestamp": "2025-10-30T13:26:06.242465",
+        "details": null
+      },
+      {
+        "test": "创建新任务",
+        "status": "FAIL",
+        "message": "创建任务失败，状态码: 422",
+        "timestamp": "2025-10-30T13:26:06.246111",
+        "details": null
+      },
+      {
+        "test": "获取任务详情",
+        "status": "PASS",
+        "message": "成功获取任务详情，标题: Simple Test Task",
+        "timestamp": "2025-10-30T13:26:06.249055",
+        "details": null
+      },
+      {
+        "test": "更新任务状态",
+        "status": "FAIL",
+        "message": "更新任务状态失败，状态码: 422",
+        "timestamp": "2025-10-30T13:26:06.251641",
+        "details": null
+      },
+      {
+        "test": "任务类型分析",
+        "status": "PASS",
+        "message": "成功获取任务类型分析数据",
+        "timestamp": "2025-10-30T13:26:06.258706",
+        "details": "数据类型: dict"
+      },
+      {
+        "test": "前端任务管理页面",
+        "status": "PASS",
+        "message": "页面正常加载且包含Vue应用",
+        "timestamp": "2025-10-30T13:26:06.280939",
+        "details": null
+      }
+    ],
+    "数据分析": [
+      {
+        "test": "分析仪表板",
+        "status": "PASS",
+        "message": "成功获取仪表板数据",
+        "timestamp": "2025-10-30T13:26:06.255207",
+        "details": "数据键: ['task_stats', 'report_stats', 'recent_tasks', 'recent_reports']"
+      },
+      {
+        "test": "前端仪表板页面",
+        "status": "PASS",
+        "message": "页面正常加载且包含Vue应用",
+        "timestamp": "2025-10-30T13:26:06.272272",
+        "details": null
+      },
+      {
+        "test": "前端数据分析页面",
+        "status": "PASS",
+        "message": "页面正常加载且包含Vue应用",
+        "timestamp": "2025-10-30T13:26:06.286697",
+        "details": null
+      }
+    ],
+    "前端集成": [
+      {
+        "test": "前端主页页面",
+        "status": "PASS",
+        "message": "页面正常加载且包含Vue应用",
+        "timestamp": "2025-10-30T13:26:06.263196",
+        "details": null
+      }
+    ],
+    "数据持久化": [
+      {
+        "test": "数据持久化",
+        "status": "FAIL",
+        "message": "无法创建测试任务",
+        "timestamp": "2025-10-30T13:26:06.298042",
+        "details": null
+      }
+    ]
+  },
+  "detailed_results": [
+    {
+      "test": "后端健康检查",
+      "status": "PASS",
+      "message": "后端服务正常，状态码: 200",
+      "timestamp": "2025-10-30T13:26:06.192686",
+      "details": null
+    },
+    {
+      "test": "前端健康检查",
+      "status": "PASS",
+      "message": "前端服务正常，状态码: 200",
+      "timestamp": "2025-10-30T13:26:06.208767",
+      "details": null
+    },
+    {
+      "test": "用户登录",
+      "status": "PASS",
+      "message": "登录成功，用户: admin",
+      "timestamp": "2025-10-30T13:26:06.212534",
+      "details": null
+    },
+    {
+      "test": "获取用户信息",
+      "status": "PASS",
+      "message": "成功获取用户信息，用户ID: 1",
+      "timestamp": "2025-10-30T13:26:06.216004",
+      "details": null
+    },
+    {
+      "test": "认证状态检查",
+      "status": "PASS",
+      "message": "认证状态正常",
+      "timestamp": "2025-10-30T13:26:06.218913",
+      "details": null
+    },
+    {
+      "test": "获取用户列表",
+      "status": "PASS",
+      "message": "成功获取用户列表，用户数量: 3",
+      "timestamp": "2025-10-30T13:26:06.234803",
+      "details": null
+    },
+    {
+      "test": "获取特定用户",
+      "status": "PASS",
+      "message": "成功获取用户详情，用户名: admin",
+      "timestamp": "2025-10-30T13:26:06.238504",
+      "details": null
+    },
+    {
+      "test": "获取任务列表",
+      "status": "PASS",
+      "message": "成功获取任务列表，任务数量: 2",
+      "timestamp": "2025-10-30T13:26:06.242465",
+      "details": null
+    },
+    {
+      "test": "创建新任务",
+      "status": "FAIL",
+      "message": "创建任务失败，状态码: 422",
+      "timestamp": "2025-10-30T13:26:06.246111",
+      "details": null
+    },
+    {
+      "test": "获取任务详情",
+      "status": "PASS",
+      "message": "成功获取任务详情，标题: Simple Test Task",
+      "timestamp": "2025-10-30T13:26:06.249055",
+      "details": null
+    },
+    {
+      "test": "更新任务状态",
+      "status": "FAIL",
+      "message": "更新任务状态失败，状态码: 422",
+      "timestamp": "2025-10-30T13:26:06.251641",
+      "details": null
+    },
+    {
+      "test": "分析仪表板",
+      "status": "PASS",
+      "message": "成功获取仪表板数据",
+      "timestamp": "2025-10-30T13:26:06.255207",
+      "details": "数据键: ['task_stats', 'report_stats', 'recent_tasks', 'recent_reports']"
+    },
+    {
+      "test": "任务类型分析",
+      "status": "PASS",
+      "message": "成功获取任务类型分析数据",
+      "timestamp": "2025-10-30T13:26:06.258706",
+      "details": "数据类型: dict"
+    },
+    {
+      "test": "前端主页页面",
+      "status": "PASS",
+      "message": "页面正常加载且包含Vue应用",
+      "timestamp": "2025-10-30T13:26:06.263196",
+      "details": null
+    },
+    {
+      "test": "前端仪表板页面",
+      "status": "PASS",
+      "message": "页面正常加载且包含Vue应用",
+      "timestamp": "2025-10-30T13:26:06.272272",
+      "details": null
+    },
+    {
+      "test": "前端任务管理页面",
+      "status": "PASS",
+      "message": "页面正常加载且包含Vue应用",
+      "timestamp": "2025-10-30T13:26:06.280939",
+      "details": null
+    },
+    {
+      "test": "前端数据分析页面",
+      "status": "PASS",
+      "message": "页面正常加载且包含Vue应用",
+      "timestamp": "2025-10-30T13:26:06.286697",
+      "details": null
+    },
+    {
+      "test": "前端用户管理页面",
+      "status": "PASS",
+      "message": "页面正常加载且包含Vue应用",
+      "timestamp": "2025-10-30T13:26:06.295026",
+      "details": null
+    },
+    {
+      "test": "数据持久化",
+      "status": "FAIL",
+      "message": "无法创建测试任务",
+      "timestamp": "2025-10-30T13:26:06.298042",
+      "details": null
+    }
+  ]
+}

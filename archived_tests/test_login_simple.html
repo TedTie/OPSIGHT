@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 500px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <h1>登录功能测试</h1>
+    
+    <form id="loginForm">
+        <div class="form-group">
+            <label for="username">用户名:</label>
+            <input type="text" id="username" value="admin" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="password">密码:</label>
+            <input type="password" id="password" value="admin" required>
+        </div>
+        
+        <button type="submit">登录</button>
+    </form>
+    
+    <div id="result"></div>
+    
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                console.log('开始登录请求...');
+                
+                // 测试1: 直接访问后端API
+                console.log('测试1: 直接访问后端API');
+                const directResponse = await fetch('http://localhost:8000/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ username, password })
+                });
+                
+                console.log('直接API响应状态:', directResponse.status);
+                const directData = await directResponse.json();
+                console.log('直接API响应数据:', directData);
+                
+                // 测试2: 通过代理访问
+                console.log('测试2: 通过代理访问');
+                const proxyResponse = await fetch('/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ username, password })
+                });
+                
+                console.log('代理API响应状态:', proxyResponse.status);
+                const proxyData = await proxyResponse.json();
+                console.log('代理API响应数据:', proxyData);
+                
+                if (directResponse.ok && proxyResponse.ok) {
+                    resultDiv.innerHTML = `
+                        <div class="result success">
+                            <h3>登录成功！</h3>
+                            <p><strong>直接API:</strong> ${directData.message}</p>
+                            <p><strong>代理API:</strong> ${proxyData.message}</p>
+                            <p><strong>用户信息:</strong> ${JSON.stringify(proxyData.user, null, 2)}</p>
+                        </div>
+                    `;
+                } else {
+                    throw new Error('登录失败');
+                }
+                
+            } catch (error) {
+                console.error('登录错误:', error);
+                resultDiv.innerHTML = `
+                    <div class="result error">
+                        <h3>登录失败</h3>
+                        <p><strong>错误信息:</strong> ${error.message}</p>
+                        <p>请查看浏览器控制台获取详细信息</p>
+                    </div>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>
