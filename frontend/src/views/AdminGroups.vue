@@ -272,8 +272,10 @@ const fetchGroups = async () => {
     }
     
     const response = await api.get('/groups', { params })
-    groups.value = response.data.items || []
-    pagination.total = response.data.total || 0
+    const data = response.data || []
+    // 兼容后端两种返回格式：分页对象或纯数组
+    groups.value = (data.items && Array.isArray(data.items)) ? data.items : (Array.isArray(data) ? data : [])
+    pagination.total = (typeof data.total === 'number') ? data.total : (Array.isArray(data) ? data.length : 0)
   } catch (error) {
     ElMessage.error('获取组织列表失败')
   } finally {

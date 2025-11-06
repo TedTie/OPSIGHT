@@ -220,18 +220,44 @@ class Task(Base):
     description = Column(Text, nullable=True)
 
     # 任务类型和标签
-    task_type = Column(Enum(TaskType), nullable=False, default=TaskType.CHECKBOX)
+    # 兼容历史数据中的小写字符串值（amount/quantity/jielong/checkbox）
+    task_type = Column(
+        Enum(
+            TaskType,
+            values_callable=lambda e: [member.value for member in e]
+        ),
+        nullable=False,
+        default=TaskType.CHECKBOX
+    )
     tags = Column(JSON, nullable=True)  # 存储标签数组
 
-    # 任务分配
-    assignment_type = Column(Enum(TaskAssignmentType), nullable=False)
+    # 任务分配（兼容历史小写字符串）
+    assignment_type = Column(
+        Enum(
+            TaskAssignmentType,
+            values_callable=lambda e: [member.value for member in e]
+        ),
+        nullable=False
+    )
     assigned_to = Column(BigInteger, ForeignKey("users.id"), nullable=True)  # 分配给特定用户
     target_group_id = Column(BigInteger, ForeignKey("user_groups.id"), nullable=True)  # 分配给特定组
     target_identity = Column(String(20), nullable=True)  # 分配给特定身份
 
-    # 任务状态
-    status = Column(Enum(TaskStatus), default=TaskStatus.PENDING)
-    priority = Column(Enum(TaskPriority), default=TaskPriority.MEDIUM)  # 优先级
+    # 任务状态（兼容历史小写字符串）
+    status = Column(
+        Enum(
+            TaskStatus,
+            values_callable=lambda e: [member.value for member in e]
+        ),
+        default=TaskStatus.PENDING
+    )
+    priority = Column(
+        Enum(
+            TaskPriority,
+            values_callable=lambda e: [member.value for member in e]
+        ),
+        default=TaskPriority.MEDIUM
+    )  # 优先级
 
     # 任务类型特定字段
     # 金额类型
@@ -260,29 +286,32 @@ class Task(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    def is_assigned_to_user(self, user_id: int) -> bool:
-        """检查任务是否分配给指定用户"""
-        if self.assignment_type == TaskAssignmentType.USER:
-            return self.assigned_to == user_id
-        elif self.assignment_type == TaskAssignmentType.ALL:
+    # 关系属性
+    records = relationship("TaskRecord", back_populates="task", cascade="all, delete-orphan")
+    jielong_records = relationship("JielongRecord", back_populates="task", cascade="all, delete-orphan")
+
+    def is_assigned_to_user(self, user: "User") -> bool:
+        """
+        检查此任务是否对指定用户可见。
+        注意：这里的 'user' 是一个 User ORM 对象。
+        """
+        # 情况1: 任务分配给所有人
+        if self.assignment_type == TaskAssignmentType.ALL:
             return True
-        elif self.assignment_type == TaskAssignmentType.GROUP:
-            # 检查用户是否属于目标组
-            if self.target_group_id:
-                # 需要查询用户信息来检查组ID
-                from sqlalchemy.orm import sessionmaker
-                from sqlalchemy import create_engine
-                # 这里需要数据库会话，暂时返回True让超级管理员可以访问
-                # 在实际使用中，应该通过依赖注入传入数据库会话
-                return True  # 临时解决方案
-            return False
-        elif self.assignment_type == TaskAssignmentType.IDENTITY:
-            # 检查用户是否具有目标身份
-            if self.target_identity:
-                # 需要查询用户信息来检查身份类型
-                # 这里需要数据库会话，暂时返回True让超级管理员可以访问
-                return True  # 临时解决方案
-            return False
+
+        # 情况2: 任务直接分配给该用户
+        if self.assignment_type == TaskAssignmentType.USER:
+            return self.assigned_to == user.id
+
+        # 情况3: 任务分配给该用户所在的用户组
+        if self.assignment_type == TaskAssignmentType.GROUP:
+            return user.group_id is not None and self.target_group_id == user.group_id
+
+        # 情况4: 任务分配给该用户的身份类型
+        if self.assignment_type == TaskAssignmentType.IDENTITY:
+            return user.identity_type is not None and self.target_identity == user.identity_type
+
+        # 其他情况或数据不一致时，默认为不可见
         return False
 
     def get_progress_percentage(self) -> float:
@@ -380,6 +409,10 @@ class DailyReport(Base):
     # 时间信息
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    def is_assigned_to_user(self, user: "User") -> bool:
+        """检查此日报是否对指定用户可见（仅本人）。"""
+        return self.user_id == (user.id if hasattr(user, "id") else None)
 
     def to_dict(self):
         """转换为字典格式"""
@@ -650,3 +683,34 @@ class SystemSettings(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
+
+
+# --- 以下是需要追加到文件末尾的内容 ---
+class TaskRecord(Base):
+    """记录数量或金额任务的每次提交"""
+    __tablename__ = "task_records"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    value = Column(Float, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    task = relationship("Task")
+    owner = relationship("User")
+
+
+class JielongRecord(Base):
+    """记录接龙任务的每次参与详情"""
+    __tablename__ = "jielong_records"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(String, index=True)
+    notes = Column(String, nullable=True)
+    intention = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    task = relationship("Task")
+    owner = relationship("User")

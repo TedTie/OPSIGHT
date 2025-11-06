@@ -1,0 +1,12 @@
+=== Testing http://127.0.0.1:8001/api/v1 ===
+Login Status: 200
+Login Body: {"message":"c??a??a??a??","user":{"id":1,"username":"admin","role":"super_admin","identity_type":"sa","full_identity":"e??co¡±cR!c??a?? - SA(e??co¡±a??a??a¡M?)","ai_knowledge_branch":"ANALYTICS","organization":"c3?c??cR!c??","group_id":2,"group_name":"MYC-LP01Team","is_active":true,"is_admin":true,"is_super_admin":true,"created_at":"2025-10-30T11:04:14"}}
+Me Status: 200
+Me Body: {"id":1,"username":"admin","role":"super_admin","identity_type":"sa","full_identity":"e??co¡±cR!c??a?? - SA(e??co¡±a??a??a¡M?)","ai_knowledge_branch":"ANALYTICS","organization":"c3?c??cR!c??","group_id":2,"group_name":"MYC-LP01Team","is_active":true,"is_admin":true,"is_super_admin":true,"created_at":"2025-10-30T11:04:14"}
+
+=== Testing http://127.0.0.1:8000/api/v1 ===
+Login Status: 200
+Login Body: {"message":"c??a??a??a??","user":{"id":1,"username":"admin","role":"super_admin","identity_type":"sa","full_identity":"e??co¡±cR!c??a?? - SA(e??co¡±a??a??a¡M?)","ai_knowledge_branch":"ANALYTICS","organization":"c3?c??cR!c??","group_id":2,"group_name":"MYC-LP01Team","is_active":true,"is_admin":true,"is_super_admin":true,"created_at":"2025-10-30T11:04:14"}}
+Me Status: 200
+Me Body: {"id":1,"username":"admin","role":"super_admin","identity_type":"sa","full_identity":"e??co¡±cR!c??a?? - SA(e??co¡±a??a??a¡M?)","ai_knowledge_branch":"ANALYTICS","organization":"c3?c??cR!c??","group_id":2,"group_name":"MYC-LP01Team","is_active":true,"is_admin":true,"is_super_admin":true,"created_at":"2025-10-30T11:04:14"}
+

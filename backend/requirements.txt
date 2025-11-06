@@ -1,13 +1,14 @@
-# 简化版本的后端依赖 - 使用SQLite
+# 后端依赖 - 支持SQLite和PostgreSQL
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 sqlalchemy==2.0.23
 pydantic==2.5.0
 python-dotenv==1.0.0
-# 移除PostgreSQL依赖，使用SQLite
-# psycopg2-binary==2.9.9
-# alembic==1.12.1
-# 移除复杂的认证依赖
+# PostgreSQL驱动 - 生产环境使用
+psycopg2-binary==2.9.9
+# 数据库迁移工具
+alembic==1.12.1
+# 认证相关依赖
 # python-jose[cryptography]==3.3.0
 # passlib[bcrypt]==1.7.4
 # python-multipart==0.0.6

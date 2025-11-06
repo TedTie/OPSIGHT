@@ -79,7 +79,7 @@ const routes = [
         path: 'admin/users',
         name: 'AdminUsers',
         component: AdminUsers,
-        meta: { requiresAdmin: true }
+        meta: { requiresSuperAdmin: true }
       },
       {
         path: 'admin/groups',

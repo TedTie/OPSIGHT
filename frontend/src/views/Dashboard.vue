@@ -127,15 +127,15 @@
               @click="viewReport(report)"
             >
               <div class="report-info">
-                <h4>{{ formatDate(report.report_date) }} 日报</h4>
-                <p>{{ report.summary || '暂无摘要' }}</p>
+                <h4>{{ formatDate(report.work_date) }} 日报</h4>
+                <p>{{ report.work_summary || '暂无摘要' }}</p>
                 <div class="report-meta">
                   <el-tag
-                    v-if="report.ai_result"
-                    :type="getEmotionType(report.ai_result.emotion_score)"
+                    v-if="report.mood_score != null"
+                    :type="getEmotionType((report.mood_score || 0) / 10)"
                     size="small"
                   >
-                    情感: {{ report.ai_result.emotion_score }}
+                    情感: {{ report.mood_score }}
                   </el-tag>
                   <span class="report-date">
                     {{ formatDateTime(report.created_at) }}
@@ -278,7 +278,7 @@ import {
   TrendCharts
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
-import { formatDate, formatDateTime } from '@/utils/date'
+import { formatDate, formatDateTime, getWeekStartEnd, getMonthStartEnd } from '@/utils/date'
 import api from '@/utils/api'
 import TaskChart from '@/components/Charts/TaskChart.vue'
 
@@ -349,7 +349,7 @@ const viewReport = (report) => {
   router.push(`/reports/${parseInt(report.id)}`)
 }
 
-// 获取统计数据
+// 获取统计数据（按用户所在组过滤）
 const fetchStats = async () => {
   if (!authStore.isAuthenticated) {
     console.log('User not authenticated, skipping stats fetch')
@@ -357,15 +357,44 @@ const fetchStats = async () => {
   }
   
   try {
-    const response = await api.get('/tasks/stats/summary')
-    Object.assign(stats, response.data)
-    
-    // 更新任务状态图表数据
+    // 统计卡片：优先使用按组过滤的分析接口（按本周范围对齐趋势图）
+    const groupId = authStore.user?.group_id ?? null
+    const [weekStartForStatus, weekEndForStatus] = getWeekStartEnd(new Date())
+    const chartsResp = await api.get('/analytics/charts', {
+      params: {
+        start_date: weekStartForStatus,
+        end_date: weekEndForStatus,
+        ...(groupId ? { group_id: groupId } : {})
+      }
+    })
+    const charts = chartsResp.data || {}
+    const statusArr = charts.taskStatus || charts.task_status || []
+    const toMap = (name) => {
+      const item = statusArr.find(s => (s.name === name || s.status === name))
+      return item ? (item.value ?? item.count ?? 0) : 0
+    }
+    stats.pendingTasks = toMap('pending')
+    stats.inProgressTasks = toMap('processing')
+    stats.completedTasks = toMap('done')
+
+    // 更新任务状态图表数据（展示中文标签）
     taskStatusData.value = [
       { name: '待处理', value: stats.pendingTasks },
       { name: '进行中', value: stats.inProgressTasks },
       { name: '已完成', value: stats.completedTasks }
     ]
+
+    // 本周日报数量：按组过滤的统计接口
+    const [weekStart, weekEnd] = getWeekStartEnd(new Date())
+    const statsResp = await api.get('/analytics/stats', {
+      params: {
+        start_date: weekStart,
+        end_date: weekEnd,
+        ...(groupId ? { group_id: groupId } : {})
+      }
+    })
+    const sdata = statsResp.data || {}
+    stats.reportsThisWeek = sdata.totalReports ?? 0
   } catch (error) {
     console.error('Failed to fetch stats:', error)
     if (error.response?.status === 401) {
@@ -375,7 +404,7 @@ const fetchStats = async () => {
   }
 }
 
-// 获取本周任务趋势数据
+// 获取本周任务趋势数据（按用户所在组过滤）
 const fetchWeeklyTrend = async () => {
   if (!authStore.isAuthenticated) {
     console.log('User not authenticated, skipping weekly trend fetch')
@@ -383,10 +412,20 @@ const fetchWeeklyTrend = async () => {
   }
   
   try {
-    const response = await api.get('/tasks/weekly-trend')
-    weeklyTaskData.value = response.data.map(item => ({
+    const groupId = authStore.user?.group_id ?? null
+    const [weekStart, weekEnd] = getWeekStartEnd(new Date())
+    const response = await api.get('/analytics/charts', {
+      params: {
+        start_date: weekStart,
+        end_date: weekEnd,
+        ...(groupId ? { group_id: groupId } : {})
+      }
+    })
+    const trend = (response.data?.taskTrend || response.data?.task_trend || [])
+    // 选择“已完成”作为趋势展示值
+    weeklyTaskData.value = trend.map(item => ({
       name: item.date,
-      value: item.count
+      value: item.completed ?? item.count ?? 0
     }))
   } catch (error) {
     console.error('Failed to fetch weekly trend:', error)
@@ -395,20 +434,12 @@ const fetchWeeklyTrend = async () => {
       router.push('/login')
       return
     }
-    // 模拟数据
-    weeklyTaskData.value = [
-      { name: '周一', value: 5 },
-      { name: '周二', value: 8 },
-      { name: '周三', value: 12 },
-      { name: '周四', value: 7 },
-      { name: '周五', value: 10 },
-      { name: '周六', value: 3 },
-      { name: '周日', value: 2 }
-    ]
+    // 失败时不使用模拟数据，保持为空以反映真实情况
+    weeklyTaskData.value = []
   }
 }
 
-// 获取工作效率数据
+// 获取工作效率数据（尽可能按组过滤本周完成率）
 const fetchEfficiency = async () => {
   if (!authStore.isAuthenticated) {
     console.log('User not authenticated, skipping efficiency fetch')
@@ -416,8 +447,24 @@ const fetchEfficiency = async () => {
   }
   
   try {
-    const response = await api.get('/reports/efficiency')
-    Object.assign(efficiency, response.data)
+    // 使用真实后端端点
+    const response = await api.get('/stats/overview')
+    const data = response.data || {}
+    efficiency.avgCompletionTime = data.avgCompletionTime ?? 0
+    efficiency.totalWorkHours = data.totalWorkHours ?? 0
+
+    // 覆盖本周完成率为“按组过滤”的值
+    const groupId = authStore.user?.group_id ?? null
+    const [weekStart, weekEnd] = getWeekStartEnd(new Date())
+    const statsResp = await api.get('/analytics/stats', {
+      params: {
+        start_date: weekStart,
+        end_date: weekEnd,
+        ...(groupId ? { group_id: groupId } : {})
+      }
+    })
+    const sdata = statsResp.data || {}
+    efficiency.weeklyCompletionRate = sdata.completionRate ?? (data.weeklyCompletionRate ?? 0)
   } catch (error) {
     console.error('Failed to fetch efficiency:', error)
     if (error.response?.status === 401) {
@@ -425,12 +472,24 @@ const fetchEfficiency = async () => {
       router.push('/login')
       return
     }
-    // 模拟数据
-    Object.assign(efficiency, {
-      avgCompletionTime: 4.5,
-      weeklyCompletionRate: 85,
-      totalWorkHours: 42
-    })
+    // 不使用模拟数据，保持默认值
+    efficiency.avgCompletionTime = 0
+    efficiency.totalWorkHours = 0
+    // 尝试保留已有的本周完成率值（若可用）
+    try {
+      const groupId = authStore.user?.group_id ?? null
+      const [weekStart, weekEnd] = getWeekStartEnd(new Date())
+      const statsResp = await api.get('/analytics/stats', {
+        params: {
+          start_date: weekStart,
+          end_date: weekEnd,
+          ...(groupId ? { group_id: groupId } : {})
+        }
+      })
+      efficiency.weeklyCompletionRate = statsResp.data?.completionRate ?? 0
+    } catch (e) {
+      efficiency.weeklyCompletionRate = 0
+    }
   }
 }
 
@@ -444,9 +503,16 @@ const fetchRecentTasks = async () => {
   tasksLoading.value = true
   try {
     const response = await api.get('/tasks', {
-      params: { limit: 5, sort: '-created_at' }
+      params: { page: 1, size: 5 }
     })
-    recentTasks.value = response.data || []
+    const data = response.data
+    if (Array.isArray(data)) {
+      recentTasks.value = data
+    } else if (data && typeof data === 'object') {
+      recentTasks.value = data.items || data.data || []
+    } else {
+      recentTasks.value = []
+    }
   } catch (error) {
     console.error('Failed to fetch recent tasks:', error)
     if (error.response?.status === 401) {
@@ -468,10 +534,25 @@ const fetchRecentReports = async () => {
   
   reportsLoading.value = true
   try {
+    const [weekStart, weekEnd] = getWeekStartEnd(new Date())
+    const groupId = authStore.user?.group_id ?? null
     const response = await api.get('/reports', {
-      params: { limit: 5, sort: '-created_at' }
+      params: {
+        page: 1,
+        size: 5,
+        start_date: weekStart,
+        end_date: weekEnd,
+        ...(groupId ? { group_id: groupId } : {})
+      }
     })
-    recentReports.value = response.data || []
+    const data = response.data
+    if (Array.isArray(data)) {
+      recentReports.value = data
+    } else if (data && typeof data === 'object') {
+      recentReports.value = data.items || data.data || []
+    } else {
+      recentReports.value = []
+    }
   } catch (error) {
     console.error('Failed to fetch recent reports:', error)
     if (error.response?.status === 401) {

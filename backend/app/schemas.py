@@ -46,6 +46,7 @@ class UserGroupResponse(BaseModel):
 class TaskCreateRequest(BaseModel):
     title: str
     description: Optional[str] = None
+    tags: Optional[List[str]] = None
     task_type: TaskType = TaskType.NORMAL
     assignment_type: TaskAssignmentType = TaskAssignmentType.USER
     assigned_user_ids: Optional[List[int]] = None
@@ -61,6 +62,7 @@ class TaskCreateRequest(BaseModel):
 class TaskUpdateRequest(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
+    tags: Optional[List[str]] = None
     task_type: Optional[TaskType] = None
     assignment_type: Optional[TaskAssignmentType] = None
     assigned_user_ids: Optional[List[int]] = None
@@ -79,16 +81,61 @@ class TaskResponse(BaseModel):
     description: Optional[str] = None
     task_type: str
     assignment_type: str
-    priority: int
+    priority: TaskPriority
+    # 任务标签与分配信息（前端需要显示）
+    tags: Optional[List[str]] = None
+    assigned_to: Optional[int] = None
+    target_group_id: Optional[int] = None
+    target_identity: Optional[str] = None
     target_amount: Optional[float] = None
     target_quantity: Optional[int] = None
+    # 当前进度字段（兼容前端详情页显示）
+    current_amount: Optional[float] = None
+    current_quantity: Optional[int] = None
     jielong_target_count: Optional[int] = None
+    jielong_current_count: Optional[int] = None
     jielong_config: Optional[Dict[str, Any]] = None
     due_date: Optional[datetime] = None
     status: str
+    is_completed: Optional[bool] = None
     created_by: int
     created_at: datetime
     updated_at: Optional[datetime] = None
+
+    # 个人接龙统计（最小改动：仅在后端计算并返回，前端不改即可读取）
+    personal_jielong_current_count: Optional[int] = None
+    personal_jielong_target_count: Optional[int] = None
+    personal_jielong_progress: Optional[float] = None
+
+    # 汇总接龙进度（用于“全部”视角显示）
+    aggregate_jielong_progress: Optional[float] = None
+    # 汇总接龙目标数量（用于“全部”视角显示）
+    aggregate_jielong_target_count: Optional[int] = None
+
+    # 参与人数（按任务分配对象计算）
+    participant_count: Optional[int] = None
+
+    # 金额类型：个人与汇总统计
+    personal_current_amount: Optional[float] = None
+    personal_target_amount: Optional[float] = None
+    personal_amount_progress: Optional[float] = None
+    aggregate_current_amount: Optional[float] = None
+    aggregate_target_amount: Optional[float] = None
+    aggregate_amount_progress: Optional[float] = None
+
+    # 数量类型：个人与汇总统计
+    personal_current_quantity: Optional[int] = None
+    personal_target_quantity: Optional[int] = None
+    personal_quantity_progress: Optional[float] = None
+    aggregate_current_quantity: Optional[int] = None
+    aggregate_target_quantity: Optional[int] = None
+    aggregate_quantity_progress: Optional[float] = None
+
+    # 勾选类型：个人与汇总统计
+    personal_is_completed: Optional[bool] = None
+    personal_completion_count: Optional[int] = None
+    completed_count: Optional[int] = None
+    aggregate_checkbox_progress: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -263,7 +310,9 @@ class PaginatedAICallLogResponse(BaseModel):
     size: int
 
 class UserCreateRequest(BaseModel):
+    password: str
     username: str
+    email: str
     role: str = "user"  # super_admin, admin, user
     identity_type: Optional[str] = None  # cc, ss, lp
     organization: Optional[str] = None
@@ -306,16 +355,18 @@ class DailyReportCreateRequest(BaseModel):
     work_date: date
     title: str
     content: str
-    work_hours: float
+    work_hours: Optional[float] = None
     task_progress: Optional[str] = None
     work_summary: Optional[str] = None
-    mood_score: int  # 1-10分
+    mood_score: Optional[int] = None  # 1-10分
     efficiency_score: int  # 1-10分
     call_count: int = 0
     call_duration: int = 0  # 分钟
     achievements: Optional[str] = None
     challenges: Optional[str] = None
     tomorrow_plan: Optional[str] = None
+    # 任务卡片明细快照：前端在提交日报时附带的结构化任务数据
+    tasks_snapshot: Optional[Dict[str, Any]] = None
 
 
 class DailyReportUpdateRequest(BaseModel):
@@ -331,6 +382,8 @@ class DailyReportUpdateRequest(BaseModel):
     achievements: Optional[str] = None
     challenges: Optional[str] = None
     tomorrow_plan: Optional[str] = None
+    # 任务卡片明细快照（更新时可覆盖）
+    tasks_snapshot: Optional[Dict[str, Any]] = None
 
 
 class DailyReportResponse(BaseModel):
@@ -339,10 +392,10 @@ class DailyReportResponse(BaseModel):
     work_date: date
     title: str
     content: str
-    work_hours: float
+    work_hours: Optional[float] = None
     task_progress: Optional[str] = None
     work_summary: Optional[str] = None
-    mood_score: int
+    mood_score: Optional[int] = None
     efficiency_score: int
     call_count: int
     call_duration: int
@@ -366,6 +419,13 @@ class PaginatedUserResponse(BaseModel):
 
 class PaginatedUserGroupResponse(BaseModel):
     items: List[UserGroupResponse]
+    total: int
+    page: int
+    size: int
+
+# 任务分页响应schema
+class PaginatedTaskResponse(BaseModel):
+    items: List[TaskResponse]
     total: int
     page: int
     size: int
@@ -435,3 +495,28 @@ class SystemSettingsResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+# Task-related schemas
+from pydantic import Field
+from pydantic import ConfigDict
+
+class JielongParticipationCreate(BaseModel):
+    # 兼容前端字段：id -> student_id，remark -> notes
+    student_id: str = Field(alias="id")
+    notes: Optional[str] = Field(default=None, alias="remark")
+    intention: Optional[str] = None
+
+    # 允许使用字段名或别名进行反序列化
+    model_config = ConfigDict(populate_by_name=True)
+
+class TaskProgressUpdate(BaseModel):
+    value: float
+
+# User schemas for compatibility
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    is_active: bool = True
+    role: str = "user"

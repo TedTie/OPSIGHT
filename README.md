@@ -530,6 +530,21 @@ REDIS_URL=redis://localhost:6379/0
 
 ## 🚀 部署指南
 
+### 生产环境数据库
+
+本项目在开发时使用 SQLite 以求便捷。在部署到生产环境时，强烈建议切换到 PostgreSQL。
+
+#### 安装 PostgreSQL 驱动
+```bash
+pip install psycopg2-binary
+```
+
+#### 配置数据库连接
+修改 `.env` 文件中的 `DATABASE_URL` 为你的 PostgreSQL 连接字符串，例如：
+```bash
+DATABASE_URL=postgresql://myuser:mypassword@localhost:5432/opsight_db
+```
+
 ### Docker 部署（推荐）
 ```bash
 # 使用 Docker Compose 一键部署

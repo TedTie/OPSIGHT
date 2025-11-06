@@ -175,7 +175,7 @@ export const useAuthStore = defineStore('auth', () => {
       
       // 用户管理权限
       'users:manage': isSuperAdmin.value,
-      'users:view:all': isAdmin.value || isSuperAdmin.value,
+      'users:view:all': isSuperAdmin.value,
       'users:view:group': isAdmin.value || isSuperAdmin.value
     }
     

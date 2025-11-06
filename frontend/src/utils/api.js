@@ -46,16 +46,30 @@ api.interceptors.response.use(
   },
   (error) => {
     console.error('API Error:', error)
-    const { response } = error
+    const { response, config } = error
     
     if (response) {
       switch (response.status) {
         case 401:
-          // 未授权，清除token并跳转到登录页
-          localStorage.removeItem('token')
-          localStorage.removeItem('user')
-          router.push('/login')
-          ElMessage.error('登录已过期，请重新登录')
+          // 未授权：区分登录失败与会话过期
+          {
+            const reqUrl = (config && config.url) ? String(config.url) : ''
+            const isLoginAttempt = reqUrl.includes('/auth/login')
+
+            // 登录接口返回401时，不做全局重定向，直接提示后端详情
+            if (isLoginAttempt) {
+              const detail = response.data?.detail
+              ElMessage.error(detail || '用户名不存在或账户已被禁用')
+              // 不清除现有登录态（可能是切换账号失败的场景）
+              break
+            }
+
+            // 其他接口401：视为会话过期，清除并回到登录页
+            localStorage.removeItem('token')
+            localStorage.removeItem('user')
+            router.push('/login')
+            ElMessage.error('登录已过期，请重新登录')
+          }
           break
         case 403:
           ElMessage.error('权限不足')
@@ -74,7 +88,19 @@ api.interceptors.response.use(
           }
           break
         case 500:
-          ElMessage.error('服务器内部错误')
+          {
+            const serverDetail = response.data?.detail || response.data?.message || response.data?.error
+            const reqUrl = (config && config.url) ? String(config.url) : ''
+            const showText = serverDetail ? `服务器内部错误：${serverDetail}` : '服务器内部错误'
+            ElMessage.error(showText)
+            // 输出更详细的上下文，便于定位后端异常源
+            console.error('[API] 500 Internal Server Error', {
+              url: reqUrl,
+              method: config?.method,
+              status: response.status,
+              data: response.data
+            })
+          }
           break
         default:
           ElMessage.error(response.data?.detail || '请求失败')

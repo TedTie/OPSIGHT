@@ -344,11 +344,6 @@ const hasPermission = computed(() => {
   return currentUser.value?.is_admin || currentUser.value?.is_super_admin
 })
 
-// 如果没有权限，重定向到首页
-if (!hasPermission.value) {
-  ElMessage.error('您没有访问知识库的权限')
-  router.push('/')
-}
 
 // 模块定义
 const modules = ref([
@@ -433,9 +428,7 @@ const formRules = {
 
 // 文件上传配置
 const uploadUrl = computed(() => `${api.defaults.baseURL}/knowledge-base/upload`)
-const uploadHeaders = computed(() => ({
-  'Authorization': `Bearer ${store.state.auth.token}`
-}))
+const uploadHeaders = computed(() => ({}))
 const uploadData = computed(() => ({
   knowledge_id: knowledgeForm.id || null
 }))
@@ -706,8 +699,11 @@ const canEdit = (knowledge) => {
   // 创建者可以编辑自己的内容
   if (knowledge.created_by === currentUser.value.id) return true
   
-  // 管理员可以编辑自己模块的内容
-  if (currentUser.value.is_admin && knowledge.module_type === currentUser.value.identity_type) {
+  // 管理员可以编辑自己模块的内容（大小写统一）
+  if (
+    currentUser.value.is_admin &&
+    String(knowledge.module_type || '').toUpperCase() === String(currentUser.value.identity_type || '').toUpperCase()
+  ) {
     return true
   }
   
@@ -723,8 +719,11 @@ const canDelete = (knowledge) => {
   // 创建者可以删除自己的内容
   if (knowledge.created_by === currentUser.value.id) return true
   
-  // 管理员可以删除自己模块的内容
-  if (currentUser.value.is_admin && knowledge.module_type === currentUser.value.identity_type) {
+  // 管理员可以删除自己模块的内容（大小写统一）
+  if (
+    currentUser.value.is_admin &&
+    String(knowledge.module_type || '').toUpperCase() === String(currentUser.value.identity_type || '').toUpperCase()
+  ) {
     return true
   }
   

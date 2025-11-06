@@ -105,7 +105,9 @@
               {{ row.current_quantity || 0 }} / {{ row.target_quantity || 0 }}
             </div>
             <div v-else-if="row.task_type === 'jielong'">
-              {{ row.jielong_current_count || 0 }} / {{ row.jielong_target_count || 0 }}
+              {{ (row.personal_jielong_current_count !== undefined && row.personal_jielong_current_count !== null) ? row.personal_jielong_current_count : (row.jielong_current_count || 0) }}
+              /
+              {{ (row.personal_jielong_target_count !== undefined && row.personal_jielong_target_count !== null) ? row.personal_jielong_target_count : (row.jielong_target_count || 0) }}
             </div>
             <div v-else-if="row.task_type === 'checkbox'">
               <el-icon v-if="row.is_completed" color="green"><Check /></el-icon>
@@ -404,7 +406,12 @@
           label="目标身份"
           prop="target_identity"
         >
-          <el-input v-model="taskForm.target_identity" placeholder="请输入目标身份" />
+          <el-select v-model="taskForm.target_identity" placeholder="请选择目标身份">
+            <el-option label="CC(顾问)" value="cc" />
+            <el-option label="SS(班主任)" value="ss" />
+            <el-option label="LP(英文辅导)" value="lp" />
+            <el-option label="SA(超级分析师)" value="sa" />
+          </el-select>
         </el-form-item>
         
         <el-form-item label="截止日期" prop="due_date">
@@ -453,6 +460,56 @@
               {{ tag }}
             </el-tag>
           </el-descriptions-item>
+          <!-- 详情视角切换（我的/全部），管理员/超管可在此筛选指定用户 -->
+          <el-descriptions-item label="视角" :span="2">
+            <div style="display: flex; gap: 12px; align-items: center;">
+              <template v-if="currentTask.task_type === 'jielong'">
+                <el-radio-group v-model="jielongEntriesScope" size="small" @change="onEntriesScopeChange">
+                  <el-radio-button label="mine">我的</el-radio-button>
+                  <el-radio-button label="all">全部</el-radio-button>
+                </el-radio-group>
+              </template>
+              <template v-else-if="currentTask.task_type === 'amount'">
+                <el-radio-group v-model="amountRecordsScope" size="small" @change="onAmountScopeChange">
+                  <el-radio-button label="mine">我的</el-radio-button>
+                  <el-radio-button label="all">全部</el-radio-button>
+                </el-radio-group>
+              </template>
+              <template v-else-if="currentTask.task_type === 'quantity'">
+                <el-radio-group v-model="quantityRecordsScope" size="small" @change="onQuantityScopeChange">
+                  <el-radio-button label="mine">我的</el-radio-button>
+                  <el-radio-button label="all">全部</el-radio-button>
+                </el-radio-group>
+              </template>
+              <template v-else-if="currentTask.task_type === 'checkbox'">
+                <el-radio-group v-model="checkboxCompletionsScope" size="small" @change="onCompletionsScopeChange">
+                  <el-radio-button label="mine">我的</el-radio-button>
+                  <el-radio-button label="all">全部</el-radio-button>
+                </el-radio-group>
+              </template>
+              <template v-if="authStore.isAdmin || authStore.isSuperAdmin">
+                <el-select
+                  v-model="selectedUserId"
+                  placeholder="筛选用户"
+                  filterable
+                  clearable
+                  size="small"
+                  style="width: 220px;"
+                  @change="onSelectedUserChange"
+                >
+                  <el-option
+                    v-for="u in availableUsers"
+                    :key="u.id"
+                    :label="u.username"
+                    :value="u.id"
+                  />
+                </el-select>
+                <el-tag v-if="authStore.isAdmin && !authStore.isSuperAdmin" type="warning" size="small">
+                  仅显示本组成员
+                </el-tag>
+              </template>
+            </div>
+          </el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="getStatusType(currentTask.status)">
               {{ getStatusText(currentTask.status) }}
@@ -466,49 +523,103 @@
           
           <!-- 任务类型特定信息 -->
           <template v-if="currentTask.task_type === 'amount'">
-            <el-descriptions-item label="目标金额">
-              {{ currentTask.target_amount || 0 }}
-            </el-descriptions-item>
-            <el-descriptions-item label="当前金额">
-              {{ currentTask.current_amount || 0 }}
-            </el-descriptions-item>
-            <el-descriptions-item label="完成进度" :span="2">
-              <el-progress 
-                :percentage="Math.round(((currentTask.current_amount || 0) / (currentTask.target_amount || 1)) * 100)"
-                :color="getProgressColor((currentTask.current_amount || 0) / (currentTask.target_amount || 1))"
-              />
-            </el-descriptions-item>
+            <!-- 我的 / 指定用户 视角：显示个人目标/当前与个人进度 -->
+            <template v-if="amountRecordsScope === 'mine' || selectedUserId">
+              <el-descriptions-item label="目标金额">
+                {{ coalesce(currentTask.personal_target_amount, currentTask.target_amount, 0) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="当前金额">
+                {{ coalesce(currentTask.personal_current_amount, currentTask.current_amount, 0) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="完成进度" :span="2">
+                <el-progress 
+                  :percentage="Math.round(ratio(coalesce(currentTask.personal_current_amount, currentTask.current_amount, 0), coalesce(currentTask.personal_target_amount, currentTask.target_amount, 1)) * 100)"
+                  :color="getProgressColor(ratio(coalesce(currentTask.personal_current_amount, currentTask.current_amount, 0), coalesce(currentTask.personal_target_amount, currentTask.target_amount, 1)))"
+                />
+              </el-descriptions-item>
+            </template>
+            <!-- 全部视角：显示汇总目标/当前与汇总进度 -->
+            <template v-else>
+              <el-descriptions-item label="目标金额">
+                {{ coalesce(currentTask.aggregate_target_amount, ((currentTask.target_amount || 0) * coalesce(currentTask.participant_count, 1)), (currentTask.target_amount || 0)) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="当前金额">
+                {{ coalesce(currentTask.aggregate_current_amount, currentTask.current_amount, 0) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="完成进度" :span="2">
+                <el-progress 
+                  :percentage="Math.round(ratio(coalesce(currentTask.aggregate_current_amount, currentTask.current_amount, 0), coalesce(currentTask.aggregate_target_amount, ((currentTask.target_amount || 1) * coalesce(currentTask.participant_count, 1)), (currentTask.target_amount || 1))) * 100)"
+                  :color="getProgressColor(ratio(coalesce(currentTask.aggregate_current_amount, currentTask.current_amount, 0), coalesce(currentTask.aggregate_target_amount, ((currentTask.target_amount || 1) * coalesce(currentTask.participant_count, 1)), (currentTask.target_amount || 1))))"
+                />
+              </el-descriptions-item>
+            </template>
           </template>
           
           <template v-if="currentTask.task_type === 'quantity'">
-            <el-descriptions-item label="目标数量">
-              {{ currentTask.target_quantity || 0 }}
-            </el-descriptions-item>
-            <el-descriptions-item label="当前数量">
-              {{ currentTask.current_quantity || 0 }}
-            </el-descriptions-item>
-            <el-descriptions-item label="完成进度" :span="2">
-              <el-progress 
-                :percentage="Math.round(((currentTask.current_quantity || 0) / (currentTask.target_quantity || 1)) * 100)"
-                :color="getProgressColor((currentTask.current_quantity || 0) / (currentTask.target_quantity || 1))"
-              />
-            </el-descriptions-item>
+            <!-- 我的 / 指定用户 视角：显示个人目标/当前与个人进度 -->
+            <template v-if="quantityRecordsScope === 'mine' || selectedUserId">
+              <el-descriptions-item label="目标数量">
+                {{ coalesce(currentTask.personal_target_quantity, currentTask.target_quantity, 0) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="当前数量">
+                {{ coalesce(currentTask.personal_current_quantity, currentTask.current_quantity, 0) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="完成进度" :span="2">
+                <el-progress 
+                  :percentage="Math.round(ratio(coalesce(currentTask.personal_current_quantity, currentTask.current_quantity, 0), coalesce(currentTask.personal_target_quantity, currentTask.target_quantity, 1)) * 100)"
+                  :color="getProgressColor(ratio(coalesce(currentTask.personal_current_quantity, currentTask.current_quantity, 0), coalesce(currentTask.personal_target_quantity, currentTask.target_quantity, 1)))"
+                />
+              </el-descriptions-item>
+            </template>
+            <!-- 全部视角：显示汇总目标/当前与汇总进度 -->
+            <template v-else>
+              <el-descriptions-item label="目标数量">
+                {{ coalesce(currentTask.aggregate_target_quantity, ((currentTask.target_quantity || 0) * coalesce(currentTask.participant_count, 1)), (currentTask.target_quantity || 0)) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="当前数量">
+                {{ coalesce(currentTask.aggregate_current_quantity, currentTask.current_quantity, 0) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="完成进度" :span="2">
+                <el-progress 
+                  :percentage="Math.round(ratio(coalesce(currentTask.aggregate_current_quantity, currentTask.current_quantity, 0), coalesce(currentTask.aggregate_target_quantity, ((currentTask.target_quantity || 1) * coalesce(currentTask.participant_count, 1)), (currentTask.target_quantity || 1))) * 100)"
+                  :color="getProgressColor(ratio(coalesce(currentTask.aggregate_current_quantity, currentTask.current_quantity, 0), coalesce(currentTask.aggregate_target_quantity, ((currentTask.target_quantity || 1) * coalesce(currentTask.participant_count, 1)), (currentTask.target_quantity || 1))))"
+                />
+              </el-descriptions-item>
+            </template>
           </template>
           
           <template v-if="currentTask.task_type === 'jielong'">
-            <el-descriptions-item label="目标接龙数量">
-              {{ currentTask.jielong_target_count || 0 }}
-            </el-descriptions-item>
-            <el-descriptions-item label="当前接龙数量">
-              {{ currentTask.jielong_current_count || 0 }}
-            </el-descriptions-item>
-            <el-descriptions-item label="接龙进度" :span="2">
-              <el-progress 
-                :percentage="Math.round(((currentTask.jielong_current_count || 0) / (currentTask.jielong_target_count || 1)) * 100)"
-                :color="getProgressColor((currentTask.jielong_current_count || 0) / (currentTask.jielong_target_count || 1))"
-              />
-            </el-descriptions-item>
-            
+            <!-- 我的 / 指定用户 视角：显示个人目标/当前与个人进度 -->
+            <template v-if="jielongEntriesScope === 'mine' || selectedUserId">
+              <el-descriptions-item label="目标接龙数量">
+                {{ coalesce(currentTask.personal_jielong_target_count, currentTask.jielong_target_count, 0) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="当前接龙数量">
+                {{ coalesce(currentTask.personal_jielong_current_count, currentTask.jielong_current_count, 0) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="接龙进度" :span="2">
+                <el-progress 
+                  :percentage="Math.round(coalesce(currentTask.personal_jielong_progress, ratio(coalesce(currentTask.personal_jielong_current_count, currentTask.jielong_current_count, 0), coalesce(currentTask.personal_jielong_target_count, currentTask.jielong_target_count, 1))) * 100)"
+                  :color="getProgressColor(coalesce(currentTask.personal_jielong_progress, ratio(coalesce(currentTask.personal_jielong_current_count, currentTask.jielong_current_count, 0), coalesce(currentTask.personal_jielong_target_count, currentTask.jielong_target_count, 1))))"
+                />
+              </el-descriptions-item>
+            </template>
+            <!-- 全部视角：显示汇总当前/目标与汇总进度 -->
+            <template v-else>
+              <el-descriptions-item label="目标接龙数量">
+                {{ coalesce(currentTask.aggregate_jielong_target_count, ((currentTask.jielong_target_count || 0) * coalesce(currentTask.participant_count, 1)), (currentTask.jielong_target_count || 0)) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="当前接龙数量">
+                {{ currentTask.jielong_current_count || 0 }}
+              </el-descriptions-item>
+              <el-descriptions-item label="接龙进度" :span="2">
+                <el-progress 
+                  :percentage="Math.round(coalesce(currentTask.aggregate_jielong_progress, ratio((currentTask.jielong_current_count || 0), coalesce(currentTask.aggregate_jielong_target_count, ((currentTask.jielong_target_count || 1) * coalesce(currentTask.participant_count, 1)), (currentTask.jielong_target_count || 1)))) * 100)"
+                  :color="getProgressColor(coalesce(currentTask.aggregate_jielong_progress, ratio((currentTask.jielong_current_count || 0), coalesce(currentTask.aggregate_jielong_target_count, ((currentTask.jielong_target_count || 1) * coalesce(currentTask.participant_count, 1)), (currentTask.jielong_target_count || 1)))))"
+                />
+              </el-descriptions-item>
+            </template>
+
             <!-- 接龙配置信息 -->
             <el-descriptions-item label="接龙配置" :span="2">
               <div class="jielong-config-info">
@@ -523,16 +634,30 @@
           </template>
           
           <template v-if="currentTask.task_type === 'checkbox'">
-            <el-descriptions-item label="完成状态" :span="2">
-              <template v-if="currentTask.is_completed">
-                <el-icon color="green"><Check /></el-icon>
-                <span style="color: green; margin-left: 4px;">已完成</span>
-              </template>
-              <template v-else>
-                <el-icon color="gray"><Close /></el-icon>
-                <span style="color: gray; margin-left: 4px;">未完成</span>
-              </template>
-            </el-descriptions-item>
+            <!-- 个人/指定用户视角下显示完成状态；全部视角下显示汇总进度 -->
+            <template v-if="checkboxCompletionsScope === 'mine' || selectedUserId">
+              <el-descriptions-item label="完成状态" :span="2">
+                <template v-if="(currentTask.personal_is_completed !== undefined && currentTask.personal_is_completed !== null) ? currentTask.personal_is_completed : currentTask.is_completed">
+                  <el-icon color="green"><Check /></el-icon>
+                  <span style="color: green; margin-left: 4px;">已完成</span>
+                </template>
+                <template v-else>
+                  <el-icon color="gray"><Close /></el-icon>
+                  <span style="color: gray; margin-left: 4px;">未完成</span>
+                </template>
+              </el-descriptions-item>
+            </template>
+            <template v-else>
+              <el-descriptions-item label="完成人数">
+                {{ currentTask.completed_count || 0 }} / {{ currentTask.participant_count || 0 }}
+              </el-descriptions-item>
+              <el-descriptions-item label="完成进度" :span="2">
+                <el-progress
+                  :percentage="Math.round(((currentTask.aggregate_checkbox_progress || 0) * 100))"
+                  :color="getProgressColor(currentTask.aggregate_checkbox_progress || 0)"
+                />
+              </el-descriptions-item>
+            </template>
           </template>
           
           <!-- 分配信息 -->
@@ -571,7 +696,130 @@
           </el-alert>
           
           <!-- 这里可以显示参与记录的只读信息 -->
+          <div v-if="currentTask.task_type === 'amount'" class="amount-records">
+            <div style="margin-bottom: 8px; display: flex; gap: 12px; align-items: center;">
+              <el-radio-group v-model="amountRecordsScope" size="small" @change="onAmountScopeChange">
+                <el-radio-button label="mine">我的</el-radio-button>
+                <el-radio-button label="all">全部</el-radio-button>
+              </el-radio-group>
+              <el-tag type="info" size="small">
+                {{ amountRecordsScope === 'mine' ? '按当前用户筛选' : '显示全部记录' }}
+              </el-tag>
+              <template v-if="authStore.isAdmin || authStore.isSuperAdmin">
+                <el-select
+                  v-model="selectedUserId"
+                  placeholder="筛选用户"
+                  filterable
+                  clearable
+                  size="small"
+                  style="width: 220px;"
+                  @change="onSelectedUserChange"
+                >
+                  <el-option
+                    v-for="u in availableUsers"
+                    :key="u.id"
+                    :label="u.username"
+                    :value="u.id"
+                  />
+                </el-select>
+                <el-tag v-if="authStore.isAdmin && !authStore.isSuperAdmin" type="warning" size="small">
+                  仅显示本组成员
+                </el-tag>
+              </template>
+            </div>
+            <el-table 
+              :data="amountRecords" 
+              size="small"
+              v-loading="loadingAmountRecords"
+            >
+              <el-table-column prop="sequence" label="序号" width="60" />
+              <el-table-column prop="user_username" label="用户" width="120" />
+              <el-table-column prop="value" label="金额/值" width="120" />
+              <el-table-column prop="created_at" label="参与时间" width="160">
+                <template #default="{ row }">
+                  {{ formatDateTime(row.created_at) }}
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+
+          <div v-if="currentTask.task_type === 'quantity'" class="quantity-records">
+            <div style="margin-bottom: 8px; display: flex; gap: 12px; align-items: center;">
+              <el-radio-group v-model="quantityRecordsScope" size="small" @change="onQuantityScopeChange">
+                <el-radio-button label="mine">我的</el-radio-button>
+                <el-radio-button label="all">全部</el-radio-button>
+              </el-radio-group>
+              <el-tag type="info" size="small">
+                {{ quantityRecordsScope === 'mine' ? '按当前用户筛选' : '显示全部记录' }}
+              </el-tag>
+              <template v-if="authStore.isAdmin || authStore.isSuperAdmin">
+                <el-select
+                  v-model="selectedUserId"
+                  placeholder="筛选用户"
+                  filterable
+                  clearable
+                  size="small"
+                  style="width: 220px;"
+                  @change="onSelectedUserChange"
+                >
+                  <el-option
+                    v-for="u in availableUsers"
+                    :key="u.id"
+                    :label="u.username"
+                    :value="u.id"
+                  />
+                </el-select>
+                <el-tag v-if="authStore.isAdmin && !authStore.isSuperAdmin" type="warning" size="small">
+                  仅显示本组成员
+                </el-tag>
+              </template>
+            </div>
+            <el-table 
+              :data="quantityRecords" 
+              size="small"
+              v-loading="loadingQuantityRecords"
+            >
+              <el-table-column prop="sequence" label="序号" width="60" />
+              <el-table-column prop="user_username" label="用户" width="120" />
+              <el-table-column prop="value" label="数量/值" width="120" />
+              <el-table-column prop="created_at" label="参与时间" width="160">
+                <template #default="{ row }">
+                  {{ formatDateTime(row.created_at) }}
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
           <div v-if="currentTask.task_type === 'jielong'" class="jielong-entries">
+            <div style="margin-bottom: 8px; display: flex; gap: 12px; align-items: center;">
+              <el-radio-group v-model="jielongEntriesScope" size="small" @change="onEntriesScopeChange">
+                <el-radio-button label="mine">我的</el-radio-button>
+                <el-radio-button label="all">全部</el-radio-button>
+              </el-radio-group>
+              <el-tag type="info" size="small">
+                {{ jielongEntriesScope === 'mine' ? '按当前用户筛选' : '显示全部记录' }}
+              </el-tag>
+              <template v-if="authStore.isAdmin || authStore.isSuperAdmin">
+                <el-select
+                  v-model="selectedUserId"
+                  placeholder="筛选用户"
+                  filterable
+                  clearable
+                  size="small"
+                  style="width: 220px;"
+                  @change="onSelectedUserChange"
+                >
+                  <el-option
+                    v-for="u in availableUsers"
+                    :key="u.id"
+                    :label="u.username"
+                    :value="u.id"
+                  />
+                </el-select>
+                <el-tag v-if="authStore.isAdmin && !authStore.isSuperAdmin" type="warning" size="small">
+                  仅显示本组成员
+                </el-tag>
+              </template>
+            </div>
             <el-table 
               :data="jielongEntries" 
               size="small"
@@ -588,6 +836,55 @@
               </el-table-column>
             </el-table>
           </div>
+        </div>
+
+        <!-- 勾选任务完成记录 -->
+        <div v-if="currentTask.task_type === 'checkbox'" class="participation-records">
+          <h4>完成记录</h4>
+          <div style="margin-bottom: 8px; display: flex; gap: 12px; align-items: center;">
+            <el-radio-group v-model="checkboxCompletionsScope" size="small" @change="onCompletionsScopeChange">
+              <el-radio-button label="mine">我的</el-radio-button>
+              <el-radio-button label="all">全部</el-radio-button>
+            </el-radio-group>
+            <el-tag type="info" size="small">
+              {{ checkboxCompletionsScope === 'mine' ? '按当前用户筛选' : '显示全部记录' }}
+            </el-tag>
+            <template v-if="authStore.isAdmin || authStore.isSuperAdmin">
+              <el-select
+                v-model="selectedUserId"
+                placeholder="筛选用户"
+                filterable
+                clearable
+                size="small"
+                style="width: 220px;"
+                @change="onSelectedUserChange"
+              >
+                <el-option
+                  v-for="u in availableUsers"
+                  :key="u.id"
+                  :label="u.username"
+                  :value="u.id"
+                />
+              </el-select>
+              <el-tag v-if="authStore.isAdmin && !authStore.isSuperAdmin" type="warning" size="small">
+                仅显示本组成员
+              </el-tag>
+            </template>
+          </div>
+          <el-table 
+            :data="checkboxCompletions" 
+            size="small"
+            v-loading="loadingCompletions"
+          >
+            <el-table-column prop="sequence" label="序号" width="60" />
+            <el-table-column prop="user_username" label="用户" width="120" />
+            <el-table-column prop="completion_value" label="完成值" width="120" />
+            <el-table-column prop="completed_at" label="完成时间" width="160">
+              <template #default="{ row }">
+                {{ formatDateTime(row.completed_at) }}
+              </template>
+            </el-table-column>
+          </el-table>
         </div>
       </div>
     </el-dialog>
@@ -649,16 +946,21 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, onMounted, watch, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search, Refresh, Check, Close } from '@element-plus/icons-vue'
 import { formatDateTime } from '@/utils/date'
 import api from '@/utils/api'
-import TaskParticipation from '@/components/TaskParticipation.vue'
+
 import { useAuthStore } from '@/stores/auth'
 
 // 认证store
 const authStore = useAuthStore()
+
+// 路由
+const router = useRouter()
+const route = useRoute()
 
 // 数据
 const loading = ref(false)
@@ -729,6 +1031,85 @@ const currentTask = ref(null)
 // 接龙相关数据
 const jielongEntries = ref([])
 const loadingEntries = ref(false)
+const jielongEntriesScope = ref('mine')
+// 管理员/超级管理员用户筛选
+const availableUsers = ref([])
+const selectedUserId = ref(null)
+
+// 金额/数量记录与勾选完成记录
+const amountRecords = ref([])
+const quantityRecords = ref([])
+const checkboxCompletions = ref([])
+const loadingAmountRecords = ref(false)
+const loadingQuantityRecords = ref(false)
+const loadingCompletions = ref(false)
+const amountRecordsScope = ref('mine')
+const quantityRecordsScope = ref('mine')
+const checkboxCompletionsScope = ref('mine')
+
+// 详情视角（mine/all）统一绑定，按任务类型映射到对应 scope
+const detailScope = computed({
+  get() {
+    const type = currentTask.value?.task_type
+    if (type === 'jielong') return jielongEntriesScope.value
+    if (type === 'amount') return amountRecordsScope.value
+    if (type === 'quantity') return quantityRecordsScope.value
+    if (type === 'checkbox') return checkboxCompletionsScope.value
+    return 'mine'
+  },
+  set(val) {
+    const type = currentTask.value?.task_type
+    if (type === 'jielong') {
+      jielongEntriesScope.value = val
+      onEntriesScopeChange()
+    } else if (type === 'amount') {
+      amountRecordsScope.value = val
+      onAmountScopeChange()
+    } else if (type === 'quantity') {
+      quantityRecordsScope.value = val
+      onQuantityScopeChange()
+    } else if (type === 'checkbox') {
+      checkboxCompletionsScope.value = val
+      onCompletionsScopeChange()
+    }
+  }
+})
+
+const loadAvailableUsers = async () => {
+  // 仅管理员或超级管理员加载用户列表
+  if (!(authStore.isAdmin || authStore.isSuperAdmin)) {
+    availableUsers.value = []
+    selectedUserId.value = null
+    return
+  }
+  try {
+    // 后端会根据权限返回可见用户：
+    // - 超级管理员：所有用户
+    // - 管理员：仅本组用户
+    const resp = await api.get('/users', { params: { page: 1, size: 200 } })
+    const items = resp.data.items || resp.data || []
+    availableUsers.value = items.map(u => ({ id: u.id, username: u.username }))
+  } catch (e) {
+    console.error('加载用户列表失败:', e)
+    availableUsers.value = []
+  }
+}
+
+const onSelectedUserChange = () => {
+  if (currentTask.value?.id) {
+    // 选择用户后刷新参与记录与个人统计
+    if (currentTask.value.task_type === 'jielong') {
+      fetchJielongEntries(currentTask.value.id)
+    } else if (currentTask.value.task_type === 'amount') {
+      fetchAmountRecords(currentTask.value.id)
+    } else if (currentTask.value.task_type === 'quantity') {
+      fetchQuantityRecords(currentTask.value.id)
+    } else if (currentTask.value.task_type === 'checkbox') {
+      fetchCheckboxCompletions(currentTask.value.id)
+    }
+    refreshTaskDetail()
+  }
+}
 
 // 任务完成表单
 const completeForm = reactive({
@@ -880,8 +1261,12 @@ const fetchTasks = async () => {
     }
     
     const response = await api.get('/tasks', { params })
-    tasks.value = response.data.items || []
-    pagination.total = response.data.total || 0
+    // 兼容两种返回结构：{ items: [...], total } 或直接数组 [...]
+    const list = coalesce(response.data?.items, response.data, [])
+    tasks.value = Array.isArray(list) ? list : []
+    // 优先使用后端提供的 total；否则退化为当前列表长度
+    const total = response.data?.total
+    pagination.total = typeof total === 'number' ? total : (Array.isArray(list) ? list.length : 0)
   } catch (error) {
     ElMessage.error('获取任务列表失败')
   } finally {
@@ -961,7 +1346,22 @@ const refreshTaskDetail = async () => {
   if (!currentTask.value) return
   
   try {
-    const response = await api.get(`/tasks/${currentTask.value.id}`)
+    const params = {}
+    // 如果管理员/超管选择了特定用户，则请求该用户的个人统计
+    if ((authStore.isAdmin || authStore.isSuperAdmin) && selectedUserId.value) {
+      params.view_user_id = selectedUserId.value
+    }
+    // 详情视图范围（我的/全部），按任务类型选择对应 scope
+    if (currentTask.value.task_type === 'jielong') {
+      params.scope = jielongEntriesScope.value
+    } else if (currentTask.value.task_type === 'amount') {
+      params.scope = amountRecordsScope.value
+    } else if (currentTask.value.task_type === 'quantity') {
+      params.scope = quantityRecordsScope.value
+    } else if (currentTask.value.task_type === 'checkbox') {
+      params.scope = checkboxCompletionsScope.value
+    }
+    const response = await api.get(`/tasks/${currentTask.value.id}`, { params })
     currentTask.value = response.data
     // 同时刷新任务列表
     fetchTasks()
@@ -980,7 +1380,7 @@ const resetForm = () => {
     description: '',
     tags: [],
     task_type: 'checkbox',
-    priority: 2,
+    priority: 'medium',
     assignment_type: 'user',
     assigned_to: null,
     target_group_id: null,
@@ -1025,9 +1425,17 @@ const submitTask = async () => {
     } else {
       submitData.assigned_group_ids = []
     }
+
+    // 处理用户分配：将 assigned_to 转换为 assigned_user_ids 数组
+    if (taskForm.assignment_type === 'user' && taskForm.assigned_to) {
+      submitData.assigned_user_ids = [parseInt(taskForm.assigned_to)]
+    } else {
+      submitData.assigned_user_ids = []
+    }
     
     // 清理不需要的字段
     delete submitData.target_group_id  // 删除前端使用的字段
+    delete submitData.assigned_to      // 避免发送未使用的字段
     if (taskForm.task_type !== 'amount') {
       delete submitData.target_amount
     }
@@ -1116,9 +1524,13 @@ const canCompleteTask = (task) => {
     return true
   }
   
-  // 如果任务分配给特定身份类型
-  if (task.assignment_type === 'identity' && task.target_identity === authStore.user?.identity_type) {
-    return true
+  // 如果任务分配给特定身份类型（大小写统一）
+  if (task.assignment_type === 'identity') {
+    const ti = String(task.target_identity || '').toLowerCase()
+    const ui = String(authStore.user?.identity_type || '').toLowerCase()
+    if (ti === ui) {
+      return true
+    }
   }
   
   // 如果任务分配给用户组，检查当前用户是否在该组中
@@ -1351,8 +1763,10 @@ const quickParticipateJielong = async (task) => {
     }
     
     // 简化版接龙参与 - 只收集ID和备注
+    const personalCurrent = (task.personal_jielong_current_count !== undefined && task.personal_jielong_current_count !== null) ? task.personal_jielong_current_count : (task.jielong_current_count || 0)
+    const personalTarget = (task.personal_jielong_target_count !== undefined && task.personal_jielong_target_count !== null) ? task.personal_jielong_target_count : (task.jielong_target_count || 0)
     const { value: id } = await ElMessageBox.prompt(
-      `请输入您的ID（当前接龙：${task.jielong_current_count || 0}/${task.jielong_target_count}）：`,
+      `请输入您的ID（当前接龙：${personalCurrent}/${personalTarget}）：`,
       '参与接龙',
       {
         confirmButtonText: '确定',
@@ -1387,10 +1801,30 @@ const quickParticipateJielong = async (task) => {
     
     ElMessage.success('接龙成功')
     fetchTasks()
+    if (currentTask.value?.id === task.id) {
+      // 参与成功后刷新详情和参与记录
+      refreshTaskDetail()
+      fetchJielongEntries(task.id)
+    }
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error('接龙失败')
     }
+  }
+}
+
+// 快速切换勾选任务状态
+const quickToggleCheckbox = async (task) => {
+  try {
+    const newStatus = !task.is_completed
+    await api.put(`/task-sync/sync-task-to-report/${task.id}`, {
+      is_completed: newStatus
+    })
+    
+    ElMessage.success(newStatus ? '任务已完成' : '任务已取消完成')
+    fetchTasks()
+  } catch (error) {
+    ElMessage.error('操作失败')
   }
 }
 
@@ -1407,6 +1841,18 @@ const getProgressColor = (percentage) => {
   if (percentage < 0.7) return '#e6a23c'
   return '#67c23a'
 }
+const coalesce = (...values) => {
+  for (const v of values) {
+    if (v !== undefined && v !== null) return v
+  }
+  return undefined
+}
+const ratio = (numerator, denominator) => {
+  const n = Number(numerator) || 0
+  const d = Number(denominator)
+  if (!d || d <= 0) return 0
+  return n / d
+}
 
 // 获取接龙记录
 const fetchJielongEntries = async (taskId) => {
@@ -1414,7 +1860,15 @@ const fetchJielongEntries = async (taskId) => {
   
   loadingEntries.value = true
   try {
-    const response = await api.get(`/tasks/${taskId}/jielong`)
+    const params = {}
+    // 优先使用管理员/超管选择的用户
+    if ((authStore.isAdmin || authStore.isSuperAdmin) && selectedUserId.value) {
+      params.user_id = selectedUserId.value
+    } else if (jielongEntriesScope.value === 'mine' && authStore.user?.id) {
+      // 非管理员或未选择用户时，“我的”筛选按当前登录用户
+      params.user_id = authStore.user.id
+    }
+    const response = await api.get(`/tasks/${taskId}/jielong`, { params })
     jielongEntries.value = response.data.items || response.data || []
   } catch (error) {
     console.error('获取接龙记录失败:', error)
@@ -1424,17 +1878,148 @@ const fetchJielongEntries = async (taskId) => {
   }
 }
 
+const onEntriesScopeChange = () => {
+  if (currentTask.value?.id) {
+    fetchJielongEntries(currentTask.value.id)
+    refreshTaskDetail()
+  }
+}
+
+// 获取金额记录
+const fetchAmountRecords = async (taskId) => {
+  if (!taskId) return
+  loadingAmountRecords.value = true
+  try {
+    const params = {}
+    if ((authStore.isAdmin || authStore.isSuperAdmin) && selectedUserId.value) {
+      params.user_id = selectedUserId.value
+    } else if (amountRecordsScope.value === 'mine' && authStore.user?.id) {
+      params.user_id = authStore.user.id
+    }
+    const response = await api.get(`/tasks/${taskId}/records`, { params })
+    amountRecords.value = response.data.items || response.data || []
+  } catch (e) {
+    console.error('获取金额记录失败:', e)
+    amountRecords.value = []
+  } finally {
+    loadingAmountRecords.value = false
+  }
+}
+
+const onAmountScopeChange = () => {
+  if (currentTask.value?.id) {
+    fetchAmountRecords(currentTask.value.id)
+    refreshTaskDetail()
+  }
+}
+
+// 获取数量记录
+const fetchQuantityRecords = async (taskId) => {
+  if (!taskId) return
+  loadingQuantityRecords.value = true
+  try {
+    const params = {}
+    if ((authStore.isAdmin || authStore.isSuperAdmin) && selectedUserId.value) {
+      params.user_id = selectedUserId.value
+    } else if (quantityRecordsScope.value === 'mine' && authStore.user?.id) {
+      params.user_id = authStore.user.id
+    }
+    const response = await api.get(`/tasks/${taskId}/records`, { params })
+    quantityRecords.value = response.data.items || response.data || []
+  } catch (e) {
+    console.error('获取数量记录失败:', e)
+    quantityRecords.value = []
+  } finally {
+    loadingQuantityRecords.value = false
+  }
+}
+
+const onQuantityScopeChange = () => {
+  if (currentTask.value?.id) {
+    fetchQuantityRecords(currentTask.value.id)
+    refreshTaskDetail()
+  }
+}
+
+// 获取勾选完成记录
+const fetchCheckboxCompletions = async (taskId) => {
+  if (!taskId) return
+  loadingCompletions.value = true
+  try {
+    const params = {}
+    if ((authStore.isAdmin || authStore.isSuperAdmin) && selectedUserId.value) {
+      params.user_id = selectedUserId.value
+    } else if (checkboxCompletionsScope.value === 'mine' && authStore.user?.id) {
+      params.user_id = authStore.user.id
+    }
+    const response = await api.get(`/tasks/${taskId}/completions`, { params })
+    checkboxCompletions.value = response.data.items || response.data || []
+  } catch (e) {
+    console.error('获取完成记录失败:', e)
+    checkboxCompletions.value = []
+  } finally {
+    loadingCompletions.value = false
+  }
+}
+
+const onCompletionsScopeChange = () => {
+  if (currentTask.value?.id) {
+    fetchCheckboxCompletions(currentTask.value.id)
+    refreshTaskDetail()
+  }
+}
+
 // 查看任务详情时获取接龙记录
 const viewTaskDetails = (task) => {
   currentTask.value = task
   activeTab.value = 'basic'
   taskDetailVisible.value = true
   
-  // 如果是接龙任务，获取接龙记录
+  // 打开详情时加载可选用户列表（仅管理员/超管可见）
+  loadAvailableUsers()
+  // 各类型默认 scope 为“我的”，并加载记录
   if (task.task_type === 'jielong') {
+    jielongEntriesScope.value = 'mine'
     fetchJielongEntries(task.id)
+  } else if (task.task_type === 'amount') {
+    amountRecordsScope.value = 'mine'
+    fetchAmountRecords(task.id)
+  } else if (task.task_type === 'quantity') {
+    quantityRecordsScope.value = 'mine'
+    fetchQuantityRecords(task.id)
+  } else if (task.task_type === 'checkbox') {
+    checkboxCompletionsScope.value = 'mine'
+    fetchCheckboxCompletions(task.id)
+  }
+  // 打开详情后刷新一次，从后端获取个人/全部统计字段
+  refreshTaskDetail()
+}
+
+// 通过任务ID打开详情（供从日报跳转使用）
+const openTaskDetailById = async (taskId) => {
+  if (!taskId) return
+  try {
+    const response = await api.get(`/tasks/${taskId}`, { params: { scope: 'mine' } })
+    const task = response.data || response.data?.item || response.data
+    if (task && task.id) {
+      viewTaskDetails(task)
+    } else {
+      ElMessage.error('未找到任务详情')
+    }
+  } catch (e) {
+    ElMessage.error('打开任务详情失败')
   }
 }
+
+onMounted(() => {
+  // 首次加载任务列表
+  fetchTasks()
+  // 如果存在 openTaskId 查询参数，自动打开详情（“我的”视角）
+  const openId = Number(route.query.openTaskId)
+  if (openId) {
+    openTaskDetailById(openId)
+  }
+})
 
 // 获取分配类型文本
 const getAssignmentTypeText = (assignmentType) => {
@@ -1474,7 +2059,10 @@ watch(filters, () => {
 // 初始化
 onMounted(() => {
   fetchTasks()
-  fetchUsers()
+  // 仅管理员或超级管理员需要用户列表（用于分配/创建任务）
+  if (authStore.isAdmin || authStore.isSuperAdmin) {
+    fetchUsers()
+  }
   fetchGroups()
 })
 </script>
@@ -1534,18 +2122,3 @@ onMounted(() => {
   }
 }
 </style>
-
-// 快速切换勾选任务状态
-const quickToggleCheckbox = async (task) => {
-  try {
-    const newStatus = !task.is_completed
-    await api.put(`/task-sync/sync-task-to-report/${task.id}`, {
-      is_completed: newStatus
-    })
-    
-    ElMessage.success(newStatus ? '任务已完成' : '任务已取消完成')
-    fetchTasks()
-  } catch (error) {
-    ElMessage.error('操作失败')
-  }
-}

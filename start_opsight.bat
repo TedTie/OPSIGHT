@@ -30,7 +30,7 @@ echo ✅ Node.js环境正常
 
 echo.
 echo 📦 安装后端依赖...
-cd /d "%~dp0backend\minimal_enhanced"
+cd /d "%~dp0backend"
 python -m pip install -r requirements.txt >nul 2>&1
 if errorlevel 1 (
     echo ⚠️ 后端依赖安装可能有问题，但继续启动...
@@ -50,8 +50,8 @@ if errorlevel 1 (
 
 echo.
 echo 🔧 启动后端服务...
-cd /d "%~dp0backend\minimal_enhanced"
-start "OPSIGHT Backend" cmd /k "python main.py"
+cd /d "%~dp0backend"
+start "OPSIGHT Backend" cmd /k "python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload"
 
 echo.
 echo ⏳ 等待后端服务启动...
@@ -75,8 +75,8 @@ echo ============================================================
 echo 🎉 OPSIGHT 系统启动成功！
 echo ============================================================
 echo 📍 前端地址: http://localhost:3001
-echo 📍 后端地址: http://localhost:8001
-echo 📚 API文档: http://localhost:8001/docs
+echo 📍 后端地址: http://localhost:8000
+echo 📚 API文档: http://localhost:8000/docs
 echo ============================================================
 echo 💡 默认登录信息:
 echo    用户名: admin

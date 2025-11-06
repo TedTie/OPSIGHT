@@ -15,7 +15,7 @@ from pathlib import Path
 class OPSIGHTLauncher:
     def __init__(self):
         self.project_root = Path(__file__).parent
-        self.backend_path = self.project_root / "backend" / "minimal_enhanced"
+        self.backend_path = self.project_root / "backend"
         self.frontend_path = self.project_root / "frontend"
         self.backend_process = None
         self.frontend_process = None
@@ -111,14 +111,21 @@ class OPSIGHTLauncher:
         try:
             os.chdir(self.backend_path)
             self.backend_process = subprocess.Popen(
-                [sys.executable, "main.py"],
+                [
+                    sys.executable,
+                    "-m", "uvicorn",
+                    "app.main:app",
+                    "--host", "127.0.0.1",
+                    "--port", "8000",
+                    "--reload"
+                ],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True
             )
             print("✅ 后端服务启动中...")
-            print("📍 后端地址: http://localhost:8001")
-            print("📚 API文档: http://localhost:8001/docs")
+            print("📍 后端地址: http://localhost:8000")
+            print("📚 API文档: http://localhost:8000/docs")
             return True
         except Exception as e:
             print(f"❌ 后端服务启动失败: {e}")
@@ -154,7 +161,7 @@ class OPSIGHTLauncher:
         # 检查后端服务
         try:
             import requests
-            response = requests.get("http://localhost:8001/health", timeout=5)
+            response = requests.get("http://localhost:8000/openapi.json", timeout=5)
             if response.status_code == 200:
                 print("✅ 后端服务就绪")
             else:
@@ -231,8 +238,8 @@ class OPSIGHTLauncher:
             print("🎉 OPSIGHT 系统启动成功！")
             print("=" * 60)
             print("📍 前端地址: http://localhost:3001")
-            print("📍 后端地址: http://localhost:8001")
-            print("📚 API文档: http://localhost:8001/docs")
+            print("📍 后端地址: http://localhost:8000")
+            print("📚 API文档: http://localhost:8000/docs")
             print("=" * 60)
             print("💡 默认登录信息:")
             print("   用户名: admin")

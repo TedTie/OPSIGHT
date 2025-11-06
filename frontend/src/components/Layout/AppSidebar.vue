@@ -45,18 +45,20 @@
           <template #title>设置</template>
         </el-menu-item>
         
-        <!-- 管理员功能 -->
+        <!-- 管理功能：管理员可见，但具体项按权限细分 -->
         <el-sub-menu v-if="isAdmin" index="admin-menu">
           <template #title>
             <el-icon><Setting /></el-icon>
             <span>管理功能</span>
           </template>
           
-          <el-menu-item index="/admin/users">
+          <!-- 用户管理：仅超级管理员可见 -->
+          <el-menu-item v-if="isSuperAdmin" index="/admin/users">
             <el-icon><User /></el-icon>
             <template #title>用户管理</template>
           </el-menu-item>
           
+          <!-- 组别管理：管理员及以上可见（页面内再细化权限） -->
           <el-menu-item index="/admin/groups">
             <el-icon><UserFilled /></el-icon>
             <template #title>组别管理</template>

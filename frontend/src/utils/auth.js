@@ -50,13 +50,8 @@ export const canAccessUser = (currentUser, targetUserId) => {
 export const canManageGroup = (currentUser, groupId) => {
   if (!currentUser) return false
   
-  // 超级管理员可以管理所有组
+  // 仅超级管理员可以管理组（管理员仅查看）
   if (currentUser.is_super_admin) return true
-  
-  // 管理员可以管理自己的组
-  if (currentUser.is_admin && currentUser.group_id === groupId) {
-    return true
-  }
   
   return false
 }

@@ -240,6 +240,27 @@
         <span>AI分析洞察</span>
       </template>
       <div class="ai-insights-content">
+        <!-- 引导说明：联动 AI 配置中的提示词与智能体绑定 -->
+        <el-alert
+          title="AI分析说明"
+          type="info"
+          :closable="false"
+          class="ai-guidance-alert"
+        >
+          <template #default>
+            <div class="ai-guidance-text">
+              本页的 AI 洞察结果由「系统功能绑定的智能体」及其提示词模板生成。提示词配置入口位于「管理功能 → AI配置 → 系统功能映射」。
+              <span v-if="currentUser?.is_super_admin">
+                您可以直接前往配置页调整绑定的智能体与提示词：
+                <el-button size="small" type="primary" @click="router.push('/admin/ai')" style="margin-left: 8px;">前往AI配置</el-button>
+              </span>
+              <span v-else>
+                如需调整分析风格或策略，请联系超级管理员在「AI配置」中修改提示词。
+              </span>
+            </div>
+          </template>
+        </el-alert>
+
         <div class="insights-grid">
           <div class="insight-item">
             <h4>情感分析统计</h4>
@@ -299,6 +320,7 @@
 
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Document, Check, Notebook, TrendCharts, Star } from '@element-plus/icons-vue'
 import VChart from 'vue-echarts'
@@ -335,6 +357,7 @@ use([
 
 const authStore = useAuthStore()
 const currentUser = computed(() => authStore.user)
+const router = useRouter()
 
 // 数据
 const loading = ref(false)
