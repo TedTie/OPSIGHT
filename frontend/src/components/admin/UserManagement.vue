@@ -108,7 +108,7 @@
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import Plus from '~icons/tabler/plus'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/utils/api'
 

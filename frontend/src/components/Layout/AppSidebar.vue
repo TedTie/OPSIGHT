@@ -1,5 +1,12 @@
 <template>
-  <el-aside :width="collapsed ? '64px' : '240px'" class="app-sidebar">
+  <el-aside
+    :width="collapsed ? '64px' : '240px'"
+    class="app-sidebar"
+    ref="asideRef"
+    :style="spotlightStyle"
+    @mousemove="onMouseMove"
+    @mouseleave="onMouseLeave"
+  >
     <div class="sidebar-content">
       <!-- 菜单 -->
       <el-menu
@@ -11,66 +18,66 @@
       >
         <!-- 仪表板 -->
         <el-menu-item index="/dashboard">
-          <el-icon><Odometer /></el-icon>
+          <el-icon><i-tabler-layout-dashboard /></el-icon>
           <template #title>仪表板</template>
         </el-menu-item>
         
         <!-- 任务管理 -->
         <el-menu-item index="/tasks">
-          <el-icon><List /></el-icon>
+          <el-icon><i-tabler-checklist /></el-icon>
           <template #title>任务管理</template>
         </el-menu-item>
         
         <!-- 日报管理 -->
         <el-menu-item index="/reports">
-          <el-icon><Document /></el-icon>
+          <el-icon><i-tabler-file-text /></el-icon>
           <template #title>日报管理</template>
         </el-menu-item>
         
         <!-- 数据分析 - 所有用户都可以访问，但看到的数据范围不同 -->
         <el-menu-item index="/analytics">
-          <el-icon><TrendCharts /></el-icon>
+          <el-icon><i-tabler-chart-line /></el-icon>
           <template #title>数据分析</template>
         </el-menu-item>
         
-        <!-- 知识库 - 所有用户都可以访问 -->
-        <el-menu-item index="/knowledge-base">
-          <el-icon><Collection /></el-icon>
+        <!-- 知识库 - 仅管理员及以上可见 -->
+        <el-menu-item v-if="isAdmin" index="/knowledge-base">
+          <el-icon><i-tabler-book-2 /></el-icon>
           <template #title>知识库</template>
         </el-menu-item>
         
         <!-- 设置 -->
         <el-menu-item v-if="isSuperAdmin" index="/settings">
-          <el-icon><Setting /></el-icon>
+          <el-icon><i-tabler-settings /></el-icon>
           <template #title>设置</template>
         </el-menu-item>
         
         <!-- 管理功能：管理员可见，但具体项按权限细分 -->
         <el-sub-menu v-if="isAdmin" index="admin-menu">
           <template #title>
-            <el-icon><Setting /></el-icon>
+            <el-icon><i-tabler-tools /></el-icon>
             <span>管理功能</span>
           </template>
           
           <!-- 用户管理：仅超级管理员可见 -->
           <el-menu-item v-if="isSuperAdmin" index="/admin/users">
-            <el-icon><User /></el-icon>
+            <el-icon><i-tabler-users /></el-icon>
             <template #title>用户管理</template>
           </el-menu-item>
           
           <!-- 组别管理：管理员及以上可见（页面内再细化权限） -->
           <el-menu-item index="/admin/groups">
-            <el-icon><UserFilled /></el-icon>
+            <el-icon><i-tabler-users /></el-icon>
             <template #title>组别管理</template>
           </el-menu-item>
           
           <el-menu-item v-if="isSuperAdmin" index="/admin/ai">
-            <el-icon><Cpu /></el-icon>
+            <el-icon><i-tabler-cpu /></el-icon>
             <template #title>AI配置</template>
           </el-menu-item>
           
           <el-menu-item v-if="isSuperAdmin" index="/admin/metrics">
-            <el-icon><DataAnalysis /></el-icon>
+            <el-icon><i-tabler-chart-dots-2 /></el-icon>
             <template #title>自定义指标</template>
           </el-menu-item>
         </el-sub-menu>
@@ -82,18 +89,6 @@
 <script setup>
 import { computed, onMounted, watch, ref, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
-import {
-  Odometer,
-  List,
-  Document,
-  TrendCharts,
-  Setting,
-  User,
-  UserFilled,
-  Cpu,
-  DataAnalysis,
-  Collection
-} from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
@@ -231,10 +226,27 @@ watch(isAdmin, (newValue) => {
 
 <style scoped>
 .app-sidebar {
-  background: #304156;
+  background: #0f172a; /* 保持原配色 */
   transition: width 0.3s;
   overflow: hidden;
+  position: relative;
 }
+
+/* 跟随鼠标的柔光高亮，不改变配色，仅轻度提亮 */
+.app-sidebar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(500px circle at var(--sb-x, -100px) var(--sb-y, -100px), rgba(255,255,255,0.06), transparent 60%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.app-sidebar:hover::before { opacity: 1; }
+
+.sidebar-content { position: relative; z-index: 1; }
 
 .sidebar-content {
   height: 100%;
@@ -248,6 +260,41 @@ watch(isAdmin, (newValue) => {
   background: transparent;
 }
 
+/* 入场动画（轻微滑入与淡入） */
+@keyframes sbItemIn {
+  0% { opacity: 0; transform: translateX(-8px) scale(0.98); }
+  100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+:deep(.el-menu-item),
+:deep(.el-sub-menu__title) {
+  position: relative;
+  transition: transform 0.18s ease, background-color 0.18s ease, color 0.18s ease;
+  animation: sbItemIn 0.5s ease both;
+}
+
+/* 轻度级联延迟（前十项） */
+:deep(.sidebar-menu > .el-menu-item:nth-child(1)),
+:deep(.sidebar-menu > .el-sub-menu:nth-child(1) > .el-sub-menu__title) { animation-delay: 30ms; }
+:deep(.sidebar-menu > .el-menu-item:nth-child(2)),
+:deep(.sidebar-menu > .el-sub-menu:nth-child(2) > .el-sub-menu__title) { animation-delay: 60ms; }
+:deep(.sidebar-menu > .el-menu-item:nth-child(3)),
+:deep(.sidebar-menu > .el-sub-menu:nth-child(3) > .el-sub-menu__title) { animation-delay: 90ms; }
+:deep(.sidebar-menu > .el-menu-item:nth-child(4)),
+:deep(.sidebar-menu > .el-sub-menu:nth-child(4) > .el-sub-menu__title) { animation-delay: 120ms; }
+:deep(.sidebar-menu > .el-menu-item:nth-child(5)),
+:deep(.sidebar-menu > .el-sub-menu:nth-child(5) > .el-sub-menu__title) { animation-delay: 150ms; }
+:deep(.sidebar-menu > .el-menu-item:nth-child(6)),
+:deep(.sidebar-menu > .el-sub-menu:nth-child(6) > .el-sub-menu__title) { animation-delay: 180ms; }
+:deep(.sidebar-menu > .el-menu-item:nth-child(7)),
+:deep(.sidebar-menu > .el-sub-menu:nth-child(7) > .el-sub-menu__title) { animation-delay: 210ms; }
+:deep(.sidebar-menu > .el-menu-item:nth-child(8)),
+:deep(.sidebar-menu > .el-sub-menu:nth-child(8) > .el-sub-menu__title) { animation-delay: 240ms; }
+:deep(.sidebar-menu > .el-menu-item:nth-child(9)),
+:deep(.sidebar-menu > .el-sub-menu:nth-child(9) > .el-sub-menu__title) { animation-delay: 270ms; }
+:deep(.sidebar-menu > .el-menu-item:nth-child(10)),
+:deep(.sidebar-menu > .el-sub-menu:nth-child(10) > .el-sub-menu__title) { animation-delay: 300ms; }
+
 :deep(.el-menu-item) {
   color: #bfcbd9;
   background: transparent !important;
@@ -257,11 +304,26 @@ watch(isAdmin, (newValue) => {
 :deep(.el-menu-item:hover) {
   background: rgba(255, 255, 255, 0.1) !important;
   color: #fff;
+  transform: translateX(2px);
 }
 
 :deep(.el-menu-item.is-active) {
-  background: #409eff !important;
+  background: var(--el-color-primary) !important;
   color: #fff;
+  transform: translateX(2px);
+}
+
+/* 活跃项左侧指示条 */
+:deep(.el-menu-item.is-active)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  background: #ffffff; /* 保持在主色背景上清晰，颜色整体不改 */
+  border-radius: 2px;
+  opacity: 0.8;
 }
 
 :deep(.el-sub-menu__title) {
@@ -273,6 +335,7 @@ watch(isAdmin, (newValue) => {
 :deep(.el-sub-menu__title:hover) {
   background: rgba(255, 255, 255, 0.1) !important;
   color: #fff;
+  transform: translateX(2px);
 }
 
 :deep(.el-sub-menu .el-menu-item) {
@@ -282,10 +345,11 @@ watch(isAdmin, (newValue) => {
 
 :deep(.el-sub-menu .el-menu-item:hover) {
   background: rgba(255, 255, 255, 0.1) !important;
+  transform: translateX(2px);
 }
 
 :deep(.el-sub-menu .el-menu-item.is-active) {
-  background: #409eff !important;
+  background: var(--el-color-primary) !important;
 }
 
 /* 折叠状态样式 */
@@ -317,3 +381,18 @@ watch(isAdmin, (newValue) => {
   margin-right: 0;
 }
 </style>
+// Sidebar spotlight 跟随鼠标的高亮效果（纯视觉）
+const asideRef = ref(null)
+const spotlightStyle = ref({})
+const onMouseMove = (e) => {
+  try {
+    const el = asideRef.value?.$el || asideRef.value || e.currentTarget
+    const rect = el.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    spotlightStyle.value = { '--sb-x': `${x}px`, '--sb-y': `${y}px` }
+  } catch (_) {
+    // 静默失败，避免影响功能
+  }
+}
+const onMouseLeave = () => { spotlightStyle.value = {} }

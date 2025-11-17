@@ -70,14 +70,17 @@ export const useAuthStore = defineStore('auth', () => {
   // 获取当前用户信息
   const fetchUserInfo = async () => {
     try {
-      const response = await api.get('/auth/me')
+      // 抑制全局 401 弹窗，改为静默处理
+      const response = await api.get('/auth/me', { suppressErrorMessage: true })
       user.value = response.data
       localStorage.setItem('user', JSON.stringify(response.data))
       return response.data
     } catch (error) {
       console.error('Fetch user info error:', error)
-      // 如果获取用户信息失败，可能cookie已过期
-      logout()
+      // 401：未登录或会话过期。抑制全局弹窗，但向上抛出让页面按既有逻辑跳转登录。
+      if (error?.response?.status === 401) {
+        throw error
+      }
       throw error
     }
   }

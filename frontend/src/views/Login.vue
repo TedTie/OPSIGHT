@@ -24,6 +24,21 @@
           />
         </el-form-item>
         
+        <el-form-item prop="password">
+          <el-input
+            v-model="loginForm.password"
+            placeholder="请输入密码"
+            size="large"
+            :prefix-icon="Lock"
+            show-password
+            @keyup.enter="handleLogin"
+          />
+        </el-form-item>
+
+        <el-form-item>
+          <el-checkbox v-model="loginForm.remember_me">记住我（30天）</el-checkbox>
+        </el-form-item>
+        
         <el-form-item>
           <el-button
             type="primary"
@@ -48,7 +63,8 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { User } from '@element-plus/icons-vue'
+import User from '~icons/tabler/user'
+import Lock from '~icons/tabler/lock'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
@@ -59,7 +75,9 @@ const loginFormRef = ref()
 
 // 登录表单数据
 const loginForm = reactive({
-  username: ''
+  username: '',
+  password: '',
+  remember_me: true
 })
 
 // 表单验证规则
@@ -67,6 +85,10 @@ const loginRules = {
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
     { min: 2, max: 50, message: '用户名长度在 2 到 50 个字符', trigger: 'blur' }
+  ],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { min: 6, max: 100, message: '密码长度至少 6 位', trigger: 'blur' }
   ]
 }
 
@@ -79,7 +101,9 @@ const handleLogin = async () => {
     if (!valid) return
     
     const success = await authStore.login({
-      username: loginForm.username
+      username: loginForm.username,
+      password: loginForm.password,
+      remember_me: loginForm.remember_me
     })
     
     if (success) {
@@ -98,7 +122,7 @@ const handleLogin = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--brand-gradient);
   padding: 20px;
 }
 
@@ -121,7 +145,7 @@ const handleLogin = async () => {
   font-weight: bold;
   color: #2c3e50;
   margin: 0 0 10px 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--brand-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

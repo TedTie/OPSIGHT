@@ -2,25 +2,28 @@
   <div class="page-container">
     <div class="page-header">
       <h1 class="page-title">数据分析</h1>
-      <p class="page-description">查看任务和日报的统计分析</p>
+      <p class="page-description">统一筛选、卡片概览、联动趋势与AI洞察</p>
     </div>
-    
-    <!-- 时间范围选择 -->
+
+    <!-- 全局筛选器 -->
     <el-card class="content-card">
       <template #header>
         <div class="card-header">
-          <span>时间范围</span>
+          <span>筛选条件</span>
+          <div class="header-actions">
+            <el-button :loading="loading" @click="refreshAll">刷新</el-button>
+          </div>
         </div>
       </template>
-      
-      <div class="time-range-selector">
+      <div class="filters-bar">
+        <!-- 时间范围选择 -->
         <el-radio-group v-model="timeRange" @change="onTimeRangeChange">
+          <el-radio-button label="today">今日</el-radio-button>
           <el-radio-button label="week">本周</el-radio-button>
           <el-radio-button label="month">本月</el-radio-button>
-          <el-radio-button label="quarter">本季度</el-radio-button>
           <el-radio-button label="custom">自定义</el-radio-button>
         </el-radio-group>
-        
+
         <el-date-picker
           v-if="timeRange === 'custom'"
           v-model="customDateRange"
@@ -30,802 +33,464 @@
           end-placeholder="结束日期"
           format="YYYY-MM-DD"
           value-format="YYYY-MM-DD"
-          @change="fetchAnalytics"
+          @change="refreshAll"
         />
-        
-        <!-- 用户组选择（仅管理员可见） -->
+
+        <!-- 组织选择（管理员/超管可见） -->
         <el-select
-          v-if="currentUser?.is_admin || currentUser?.is_super_admin"
+          v-if="isAdminOrSuper"
           v-model="selectedGroupId"
-          placeholder="选择用户组"
+          placeholder="选择组织"
           clearable
-          @change="fetchAnalytics"
           style="width: 200px"
+          @change="refreshAll"
         >
-          <el-option label="全部用户组" :value="null" />
-          <el-option
-            v-for="group in userGroups"
-            :key="group.id"
-            :label="group.name"
-            :value="group.id"
-          />
+          <el-option label="全部组织" :value="null" />
+          <el-option v-for="g in userGroups" :key="g.id" :label="g.name" :value="g.id" />
+        </el-select>
+
+        <!-- 身份视角（仅超管可见） -->
+        <el-select
+          v-if="isSuperAdmin"
+          v-model="roleScope"
+          placeholder="选择视角"
+          style="width: 200px"
+          @change="refreshAll"
+        >
+          <el-option label="CC(顾问)视角" value="CC" />
+          <el-option label="SS(班主任)视角" value="SS" />
+          <el-option label="LP(英文辅导)视角" value="LP" />
+          <el-option label="全局视角" value="ALL" />
+        </el-select>
+
+        <!-- 用户筛选（管理员/超管可见） -->
+        <el-select
+          v-if="isAdminOrSuper"
+          v-model="selectedUserId"
+          placeholder="选择用户"
+          filterable
+          clearable
+          style="width: 220px"
+          @change="refreshAll"
+        >
+          <el-option label="全部用户" :value="null" />
+          <el-option v-for="u in userOptions" :key="u.id" :label="u.username" :value="u.id" />
         </el-select>
       </div>
     </el-card>
-    
-    <!-- 统计卡片 -->
-    <div class="stats-grid">
-      <el-card class="stat-card">
-        <div class="stat-content">
-          <div class="stat-value">{{ stats.totalTasks }}</div>
-          <div class="stat-label">总任务数</div>
-        </div>
-        <div class="stat-icon">
-          <el-icon><Document /></el-icon>
-        </div>
-      </el-card>
-      
-      <el-card class="stat-card">
-        <div class="stat-content">
-          <div class="stat-value">{{ stats.completedTasks }}</div>
-          <div class="stat-label">已完成任务</div>
-        </div>
-        <div class="stat-icon">
-          <el-icon><Check /></el-icon>
-        </div>
-      </el-card>
-      
-      <el-card class="stat-card">
-        <div class="stat-content">
-          <div class="stat-value">{{ stats.completionRate }}%</div>
-          <div class="stat-label">完成率</div>
-        </div>
-        <div class="stat-icon">
-          <el-icon><TrendCharts /></el-icon>
-        </div>
-      </el-card>
-      
-      <el-card class="stat-card">
-        <div class="stat-content">
-          <div class="stat-value">{{ stats.totalReports }}</div>
-          <div class="stat-label">日报数量</div>
-        </div>
-        <div class="stat-icon">
-          <el-icon><Notebook /></el-icon>
-        </div>
-      </el-card>
-      
-      <el-card class="stat-card">
-        <div class="stat-content">
-          <div class="stat-value">{{ stats.avgEmotionScore }}</div>
-          <div class="stat-label">平均情感分数</div>
-        </div>
-        <div class="stat-icon">
-          <el-icon><Star /></el-icon>
-        </div>
-      </el-card>
-    </div>
-    
-    <!-- 图表区域 -->
-    <div class="charts-grid">
-      <!-- 任务完成趋势 -->
-      <el-card class="chart-card">
-        <template #header>
-          <span>任务完成趋势</span>
-        </template>
-        <div class="chart-container">
-          <v-chart
-            :option="taskTrendOption"
-            :loading="loading"
-            style="height: 300px"
-          />
-        </div>
-      </el-card>
-      
-      <!-- 任务状态分布 -->
-      <el-card class="chart-card">
-        <template #header>
-          <span>任务状态分布</span>
-        </template>
-        <div class="chart-container">
-          <v-chart
-            :option="taskStatusOption"
-            :loading="loading"
-            style="height: 300px"
-          />
-        </div>
-      </el-card>
-      
-      <!-- 情感分数趋势 -->
-      <el-card class="chart-card">
-        <template #header>
-          <span>情感分数趋势</span>
-        </template>
-        <div class="chart-container">
-          <v-chart
-            :option="emotionTrendOption"
-            :loading="loading"
-            style="height: 300px"
-          />
-        </div>
-      </el-card>
-      
-      <!-- 任务优先级分布 -->
-      <el-card class="chart-card">
-        <template #header>
-          <span>任务优先级分布</span>
-        </template>
-        <div class="chart-container">
-          <v-chart
-            :option="priorityDistributionOption"
-            :loading="loading"
-            style="height: 300px"
-          />
-        </div>
-      </el-card>
-      
-      <!-- AI使用统计 -->
-      <el-card class="chart-card">
-        <template #header>
-          <span>AI使用统计</span>
-        </template>
-        <div class="ai-stats-content">
-          <div class="ai-stat-item">
-            <div class="ai-stat-label">总调用次数</div>
-            <div class="ai-stat-value">{{ aiStats.totalCalls }}</div>
-          </div>
-          <div class="ai-stat-item">
-            <div class="ai-stat-label">总Token数</div>
-            <div class="ai-stat-value">{{ aiStats.totalTokens }}</div>
-          </div>
-          <div class="ai-stat-item">
-            <div class="ai-stat-label">总成本</div>
-            <div class="ai-stat-value">${{ aiStats.totalCost }}</div>
-          </div>
-          <div class="ai-stat-item">
-            <div class="ai-stat-label">平均处理时间</div>
-            <div class="ai-stat-value">{{ aiStats.avgProcessingTime }}s</div>
-          </div>
-        </div>
-      </el-card>
-      
-      <!-- 用户绩效排行（仅管理员可见） -->
-      <el-card 
-        v-if="currentUser?.is_admin || currentUser?.is_super_admin"
-        class="chart-card user-performance-card"
-      >
-        <template #header>
-          <span>用户绩效排行</span>
-        </template>
-        <div class="user-performance-content">
-          <el-table
-            :data="userPerformance"
-            style="width: 100%"
-            :loading="loading"
-            size="small"
-          >
-            <el-table-column prop="username" label="用户名" width="120" />
-            <el-table-column prop="totalTasks" label="总任务" width="80" />
-            <el-table-column prop="completedTasks" label="已完成" width="80" />
-            <el-table-column prop="completionRate" label="完成率" width="80">
-              <template #default="scope">
-                <el-tag
-                  :type="scope.row.completionRate >= 80 ? 'success' : 
-                         scope.row.completionRate >= 60 ? 'warning' : 'danger'"
-                >
-                  {{ scope.row.completionRate }}%
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="totalReports" label="日报数" width="80" />
-            <el-table-column prop="avgEmotionScore" label="情感分数" width="100">
-              <template #default="scope">
-                <el-progress
-                  :percentage="scope.row.avgEmotionScore * 100"
-                  :color="getEmotionColor(scope.row.avgEmotionScore)"
-                  :show-text="false"
-                  style="width: 60px"
-                />
-                <span style="margin-left: 8px">{{ scope.row.avgEmotionScore }}</span>
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-      </el-card>
-    </div>
-    
-    <!-- AI洞察面板 -->
-    <el-card class="ai-insights-card">
-      <template #header>
-        <span>AI分析洞察</span>
-      </template>
-      <div class="ai-insights-content">
-        <!-- 引导说明：联动 AI 配置中的提示词与智能体绑定 -->
-        <el-alert
-          title="AI分析说明"
-          type="info"
-          :closable="false"
-          class="ai-guidance-alert"
-        >
-          <template #default>
-            <div class="ai-guidance-text">
-              本页的 AI 洞察结果由「系统功能绑定的智能体」及其提示词模板生成。提示词配置入口位于「管理功能 → AI配置 → 系统功能映射」。
-              <span v-if="currentUser?.is_super_admin">
-                您可以直接前往配置页调整绑定的智能体与提示词：
-                <el-button size="small" type="primary" @click="router.push('/admin/ai')" style="margin-left: 8px;">前往AI配置</el-button>
-              </span>
-              <span v-else>
-                如需调整分析风格或策略，请联系超级管理员在「AI配置」中修改提示词。
-              </span>
-            </div>
-          </template>
-        </el-alert>
 
-        <div class="insights-grid">
-          <div class="insight-item">
-            <h4>情感分析统计</h4>
-            <div class="insight-stats">
-              <div class="insight-stat">
-                <span class="label">已分析报告:</span>
-                <span class="value">{{ aiInsights.emotionStats.totalAnalyzed }}</span>
-              </div>
-              <div class="insight-stat">
-                <span class="label">平均情感分数:</span>
-                <span class="value">{{ aiInsights.emotionStats.avgEmotion }}</span>
-              </div>
-              <div class="insight-stat">
-                <span class="label">情感分数范围:</span>
-                <span class="value">
-                  {{ aiInsights.emotionStats.minEmotion }} - {{ aiInsights.emotionStats.maxEmotion }}
-                </span>
-              </div>
-            </div>
-          </div>
-          
-          <div class="insight-item">
-            <h4>常见关键词</h4>
-            <div class="keywords-container">
-              <el-tag
-                v-for="keyword in aiInsights.commonKeywords.slice(0, 10)"
-                :key="keyword.keyword"
-                class="keyword-tag"
-                :size="getKeywordSize(keyword.frequency)"
-              >
-                {{ keyword.keyword }} ({{ keyword.frequency }})
-              </el-tag>
-            </div>
-          </div>
-          
-          <div class="insight-item">
-            <h4>AI模型使用情况</h4>
-            <div class="model-usage">
-              <div
-                v-for="model in aiInsights.modelUsage"
-                :key="model.model"
-                class="model-item"
-              >
-                <div class="model-name">{{ model.model }}</div>
-                <div class="model-stats">
-                  <span>使用次数: {{ model.count }}</span>
-                  <span>平均处理时间: {{ model.avgProcessingTime }}s</span>
-                </div>
-              </div>
-            </div>
+    <!-- 数据卡片网格（点击联动趋势） -->
+    <div class="stats-grid">
+      <el-card
+        v-for="card in cards"
+        :key="card.metricKey"
+        class="stat-card"
+        :class="{ active: activeMetricKey === card.metricKey }"
+        @click="activateCard(card.metricKey)"
+      >
+        <div class="stat-content">
+          <div class="stat-value">{{ formatCardValue(card) }}</div>
+          <div class="stat-label">{{ card.title }}</div>
+        </div>
+        <div class="stat-icon">
+          <el-tag size="small" type="info">{{ card.metricKey }}</el-tag>
+        </div>
+        <div class="card-actions">
+          <el-button size="small" text type="primary" :loading="aiLoadingMap[card.metricKey]" @click.stop="fetchAIInsight(card.metricKey)">AI</el-button>
+        </div>
+      </el-card>
+    </div>
+
+    <!-- 联动趋势图 -->
+    <el-card class="chart-card">
+      <template #header>
+        <div class="card-header">
+          <span>趋势分析</span>
+          <div class="header-actions">
+            <el-tag v-if="activeMetricKey" type="primary" size="small">指标：{{ activeMetricKey }}</el-tag>
           </div>
         </div>
+      </template>
+      <div class="chart-container">
+        <v-chart :option="trendOption" :loading="loading" style="height: 320px" />
       </div>
     </el-card>
+
+    <!-- AI洞察弹窗 -->
+    <el-dialog v-model="aiDialogVisible" title="AI洞察" width="620px">
+      <div style="white-space: pre-wrap; min-height: 120px;">{{ aiInsightText || '—' }}</div>
+      <template #footer>
+        <el-button @click="aiDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
+  
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Document, Check, Notebook, TrendCharts, Star } from '@element-plus/icons-vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
-import {
-  CanvasRenderer
-} from 'echarts/renderers'
-import {
-  LineChart,
-  PieChart,
-  BarChart
-} from 'echarts/charts'
-import {
-  TitleComponent,
-  TooltipComponent,
-  LegendComponent,
-  GridComponent
-} from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+import { LineChart } from 'echarts/charts'
+import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
 import api from '@/utils/api'
-import { getWeekStartEnd, getMonthStartEnd } from '@/utils/date'
+import { getWeekStartEnd, getMonthStartEnd, getTodayString } from '@/utils/date'
 import { useAuthStore } from '@/stores/auth'
 
-// 注册 ECharts 组件
-use([
-  CanvasRenderer,
-  LineChart,
-  PieChart,
-  BarChart,
-  TitleComponent,
-  TooltipComponent,
-  LegendComponent,
-  GridComponent
-])
+use([CanvasRenderer, LineChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent])
 
 const authStore = useAuthStore()
 const currentUser = computed(() => authStore.user)
-const router = useRouter()
+const isSuperAdmin = computed(() => !!currentUser.value?.is_super_admin || currentUser.value?.role === 'super_admin')
+const isAdmin = computed(() => !!currentUser.value?.is_admin || currentUser.value?.role === 'admin')
+const isAdminOrSuper = computed(() => isSuperAdmin.value || isAdmin.value)
 
-// 数据
+// 全局筛选状态
 const loading = ref(false)
 const timeRange = ref('month')
 const customDateRange = ref([])
 const selectedGroupId = ref(null)
+const selectedUserId = ref(null)
+const roleScope = ref('CC')
+const userOptions = ref([])
 const userGroups = ref([])
 
-// 统计数据
-const stats = reactive({
-  totalTasks: 0,
-  completedTasks: 0,
-  completionRate: 0,
-  totalReports: 0,
-  avgEmotionScore: 0
-})
+// 数据与卡片
+const summary = reactive({})
+const cards = computed(() => buildCardsFromSummary(summary, roleScope.value))
+const activeMetricKey = ref('')
 
-// 图表数据
-const chartData = reactive({
-  taskTrend: [],
-  taskStatus: [],
-  emotionTrend: [],
-  priorityDistribution: []
-})
-
-// AI统计数据
-const aiStats = reactive({
-  totalCalls: 0,
-  totalTokens: 0,
-  totalCost: 0,
-  avgProcessingTime: 0
-})
-
-// 用户绩效数据
-const userPerformance = ref([])
-
-// AI洞察数据
-const aiInsights = reactive({
-  emotionStats: {
-    totalAnalyzed: 0,
-    avgEmotion: 0,
-    minEmotion: 0,
-    maxEmotion: 0
-  },
-  commonKeywords: [],
-  modelUsage: []
-})
-
-// 计算日期范围
-const dateRange = computed(() => {
-  if (timeRange.value === 'custom') {
-    return customDateRange.value
-  }
-  
-  const now = new Date()
-  switch (timeRange.value) {
-    case 'week':
-      return getWeekStartEnd(now)
-    case 'month':
-      return getMonthStartEnd(now)
-    case 'quarter':
-      const quarterStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1)
-      const quarterEnd = new Date(quarterStart.getFullYear(), quarterStart.getMonth() + 3, 0)
-      return [quarterStart.toISOString().split('T')[0], quarterEnd.toISOString().split('T')[0]]
-    default:
-      return getMonthStartEnd(now)
-  }
-})
-
-// 任务完成趋势图表配置
-const taskTrendOption = computed(() => ({
-  tooltip: {
-    trigger: 'axis'
-  },
-  legend: {
-    data: ['已完成', '新增']
-  },
-  xAxis: {
-    type: 'category',
-    data: chartData.taskTrend.map(item => item.date)
-  },
-  yAxis: {
-    type: 'value'
-  },
-  series: [
-    {
-      name: '已完成',
-      type: 'line',
-      data: chartData.taskTrend.map(item => item.completed),
-      smooth: true,
-      itemStyle: { color: '#67C23A' }
-    },
-    {
-      name: '新增',
-      type: 'line',
-      data: chartData.taskTrend.map(item => item.created),
-      smooth: true,
-      itemStyle: { color: '#409EFF' }
-    }
-  ]
+// 趋势图配置
+const trendSeries = ref([])
+const trendOption = computed(() => ({
+  tooltip: { trigger: 'axis' },
+  grid: { left: '3%', right: '3%', bottom: '3%', containLabel: true },
+  xAxis: { type: 'category', data: trendSeries.value.map(d => d.date) },
+  yAxis: { type: 'value' },
+  series: [{ name: activeMetricKey.value || '指标', type: 'line', smooth: true, data: trendSeries.value.map(d => d.value) }]
 }))
 
-// 任务状态分布图表配置
-const taskStatusOption = computed(() => ({
-  tooltip: {
-    trigger: 'item'
-  },
-  legend: {
-    orient: 'vertical',
-    left: 'left'
-  },
-  series: [
-    {
-      type: 'pie',
-      radius: '50%',
-      data: chartData.taskStatus,
-      emphasis: {
-        itemStyle: {
-          shadowBlur: 10,
-          shadowOffsetX: 0,
-          shadowColor: 'rgba(0, 0, 0, 0.5)'
-        }
-      }
-    }
-  ]
-}))
+// AI洞察
+const aiDialogVisible = ref(false)
+const aiInsightText = ref('')
+const aiLoadingMap = reactive({})
 
-// 情感分数趋势图表配置
-const emotionTrendOption = computed(() => ({
-  tooltip: {
-    trigger: 'axis'
-  },
-  xAxis: {
-    type: 'category',
-    data: chartData.emotionTrend.map(item => item.date)
-  },
-  yAxis: {
-    type: 'value',
-    min: 0,
-    max: 1
-  },
-  series: [
-    {
-      name: '情感分数',
-      type: 'line',
-      data: chartData.emotionTrend.map(item => item.score),
-      smooth: true,
-      itemStyle: { color: '#E6A23C' },
-      areaStyle: {
-        opacity: 0.3
-      }
-    }
-  ]
-}))
+// 初始化
+onMounted(() => {
+  initTimeByRange()
+  fetchUsersAndGroups()
+  refreshAll()
+})
 
-// 任务优先级分布图表配置
-const priorityDistributionOption = computed(() => ({
-  tooltip: {
-    trigger: 'axis',
-    axisPointer: {
-      type: 'shadow'
-    }
-  },
-  xAxis: {
-    type: 'category',
-    data: chartData.priorityDistribution.map(item => item.priority)
-  },
-  yAxis: {
-    type: 'value'
-  },
-  series: [
-    {
-      type: 'bar',
-      data: chartData.priorityDistribution.map(item => ({
-        value: item.count,
-        itemStyle: {
-          color: item.priority === '高优先级' ? '#F56C6C' : 
-                 item.priority === '中优先级' ? '#E6A23C' : '#67C23A'
-        }
-      }))
-    }
+// 构建卡片（固定15项指标，缺失值显示为—）
+function buildCardsFromSummary(s, role) {
+  const schema = [
+    { metricKey: 'task_completion_rate', title: '任务完成率', unit: '%', isPercent: true },
+    { metricKey: 'period_sales_amount', title: '销售总额', unit: 'USD' },
+    { metricKey: 'period_referral_amount', title: '转介绍金额', unit: 'USD' },
+    { metricKey: 'period_renewal_amount', title: '续费金额', unit: 'USD' },
+    { metricKey: 'period_upgrade_amount', title: '升级金额', unit: 'USD' },
+    { metricKey: 'referral_count', title: '转介绍单量', unit: '单' },
+    { metricKey: 'renewal_count', title: '续费单量', unit: '单' },
+    { metricKey: 'upgrade_count', title: '升级单量', unit: '单' },
+    { metricKey: 'report_submission_rate', title: '日报提交率', unit: '%', isPercent: true },
+    { metricKey: 'new_leads_count', title: '新增线索', unit: '个' },
+    { metricKey: 'call_count', title: '通话单量', unit: '单' },
+    { metricKey: 'conversion_rate', title: '转化率', unit: '%', isPercent: true },
+    { metricKey: 'active_students', title: '活跃学员', unit: '人' },
+    { metricKey: 'refund_rate', title: '退款率', unit: '%', isPercent: true },
+    { metricKey: 'course_completion_rate', title: '课程完成率', unit: '%', isPercent: true }
   ]
-}))
-
-// 工具函数
-const getEmotionColor = (score) => {
-  if (score >= 0.7) return '#67C23A'
-  if (score >= 0.4) return '#E6A23C'
-  return '#F56C6C'
+  const list = schema.map(conf => ({ ...conf, value: s[conf.metricKey] }))
+  if (!activeMetricKey.value && list.length) activeMetricKey.value = list[0].metricKey
+  return list
 }
 
-const getKeywordSize = (frequency) => {
-  if (frequency >= 10) return 'large'
-  if (frequency >= 5) return 'default'
-  return 'small'
+// 时间范围变化
+function onTimeRangeChange() {
+  initTimeByRange()
+  refreshAll()
 }
 
-// 时间范围变化处理
-const onTimeRangeChange = () => {
-  if (timeRange.value !== 'custom') {
-    fetchAnalytics()
+function initTimeByRange() {
+  if (timeRange.value === 'today') {
+    const t = getTodayString()
+    customDateRange.value = [t, t]
+  } else if (timeRange.value === 'week') {
+    customDateRange.value = getWeekStartEnd(new Date())
+  } else if (timeRange.value === 'month') {
+    customDateRange.value = getMonthStartEnd(new Date())
   }
 }
 
-// 获取用户组列表
-const fetchUserGroups = async () => {
-  if (!(currentUser.value?.is_admin || currentUser.value?.is_super_admin)) {
-    return
-  }
-  
+// 刷新汇总与趋势
+async function refreshAll() {
+  await fetchSummary()
+  if (activeMetricKey.value) await fetchTrend(activeMetricKey.value)
+}
+
+// 获取用户/组织选项（占位实现）
+async function fetchUsersAndGroups() {
   try {
-    const response = await api.get('/groups')
-    userGroups.value = response.data
-  } catch (error) {
-    console.error('获取用户组失败:', error)
-  }
+    // 可对接实际接口：/admin/users, /admin/groups
+    userOptions.value = []
+    userGroups.value = []
+  } catch {}
 }
 
-// 获取分析数据
-const fetchAnalytics = async () => {
+// 构建请求参数
+function buildParams(extra = {}) {
+  const [start, end] = customDateRange.value || []
+  const params = {
+    start_date: start,
+    end_date: end,
+    group_id: selectedGroupId.value || undefined,
+    user_id: selectedUserId.value || undefined,
+    ...extra
+  }
+  return params
+}
+
+// 获取汇总数据
+async function fetchSummary() {
   loading.value = true
   try {
-    const [startDate, endDate] = dateRange.value
-    const params = {
-      start_date: startDate,
-      end_date: endDate
-    }
-    
-    if (selectedGroupId.value) {
-      params.group_id = selectedGroupId.value
-    }
-    
-    // 获取统计数据
-    const statsResponse = await api.get('/analytics/stats', { params })
-    Object.assign(stats, statsResponse.data)
-    
-    // 获取图表数据
-    const chartsResponse = await api.get('/analytics/charts', { params })
-    Object.assign(chartData, chartsResponse.data.taskTrend ? chartsResponse.data : {
-      taskTrend: chartsResponse.data.task_trend || [],
-      taskStatus: chartsResponse.data.task_status || [],
-      emotionTrend: chartsResponse.data.emotion_trend || [],
-      priorityDistribution: chartsResponse.data.priority_distribution || []
+    const [start, end] = customDateRange.value || []
+    // 计算 year/month（用于 /analytics/summary 月度聚合）
+    const refDateStr = end || start || getTodayString()
+    const refDate = new Date(refDateStr)
+    const y = refDate.getFullYear()
+    const m = refDate.getMonth() + 1
+
+    const group_id = selectedGroupId.value || undefined
+    const user_id = selectedUserId.value || undefined
+
+    // 统一数据（ALL/CC/SS/LP）
+    const { data: dataUnified } = await api.get('/analytics/data', {
+      params: {
+        ...buildParams(),
+        role_scope: roleScope.value || undefined
+      }
     })
-    
-    // 更新AI统计数据
-    if (chartsResponse.data.ai_stats) {
-      Object.assign(aiStats, {
-        totalCalls: chartsResponse.data.ai_stats.total_calls,
-        totalTokens: chartsResponse.data.ai_stats.total_tokens,
-        totalCost: chartsResponse.data.ai_stats.total_cost,
-        avgProcessingTime: chartsResponse.data.ai_stats.avg_processing_time
-      })
+    const metrics = dataUnified?.metrics || {}
+
+    // 身份月度汇总（用于金额与单量精细项）
+    let ccMonth = null
+    let ssMonth = null
+    if (roleScope.value === 'CC' || roleScope.value === 'ALL') {
+      try {
+        const { data: cc } = await api.get('/analytics/summary', {
+          params: { identity_type: 'CC', group_id, user_id, year: y, month: m }
+        })
+        ccMonth = cc?.month || null
+      } catch {}
     }
-    
-    // 获取用户绩效数据（仅管理员）
-    if (currentUser.value?.is_admin || currentUser.value?.is_super_admin) {
-      const performanceResponse = await api.get('/analytics/user-performance', { params })
-      userPerformance.value = performanceResponse.data
+    if (roleScope.value === 'SS' || roleScope.value === 'ALL') {
+      try {
+        const { data: ss } = await api.get('/analytics/summary', {
+          params: { identity_type: 'SS', group_id, user_id, year: y, month: m }
+        })
+        ssMonth = ss?.month || null
+      } catch {}
     }
-    
-    // 获取AI洞察数据
-    const insightsResponse = await api.get('/analytics/ai-insights', { params })
-    Object.assign(aiInsights, {
-      emotionStats: insightsResponse.data.emotion_stats,
-      commonKeywords: insightsResponse.data.common_keywords,
-      modelUsage: insightsResponse.data.model_usage
-    })
-    
-  } catch (error) {
-    ElMessage.error('获取分析数据失败')
-    console.error('Analytics fetch error:', error)
+
+    // 组装15项指标
+    const assembled = {
+      task_completion_rate: metrics.task_completion_rate ?? null,
+      report_submission_rate: metrics.report_submission_rate ?? null,
+      call_count: metrics.call_count ?? null,
+      new_leads_count: metrics.new_leads_count ?? null,
+      conversion_rate: metrics.conversion_rate ?? null,
+      active_students: metrics.active_students ?? null,
+      refund_rate: metrics.refund_rate ?? null,
+      course_completion_rate: metrics.course_completion_rate ?? null
+    }
+
+    // 金额与单量（根据视角拼接）
+    if (roleScope.value === 'CC') {
+      const cm = ccMonth || {}
+      assembled.period_sales_amount = cm.actual_amount ?? null
+      assembled.period_referral_amount = cm.referral_amount ?? null
+      assembled.period_renewal_amount = null
+      assembled.period_upgrade_amount = null
+      assembled.referral_count = cm.referral_count ?? null
+      assembled.renewal_count = null
+      assembled.upgrade_count = null
+    } else if (roleScope.value === 'SS') {
+      const sm = ssMonth || {}
+      assembled.period_sales_amount = sm.actual_amount ?? null
+      assembled.period_referral_amount = null
+      assembled.period_renewal_amount = sm.renewal_amount ?? null
+      assembled.period_upgrade_amount = sm.upgrade_amount ?? null
+      assembled.referral_count = null
+      assembled.renewal_count = sm.renewal_count ?? null
+      assembled.upgrade_count = sm.upgrade_count ?? null
+    } else {
+      // ALL：汇总 CC 与 SS
+      const cm = ccMonth || {}
+      const sm = ssMonth || {}
+      const ccSales = (cm.actual_amount ?? 0) || 0
+      const ssSales = (sm.actual_amount ?? 0) || 0
+      assembled.period_sales_amount = ccSales + ssSales
+      assembled.period_referral_amount = cm.referral_amount ?? null
+      assembled.period_renewal_amount = sm.renewal_amount ?? null
+      assembled.period_upgrade_amount = sm.upgrade_amount ?? null
+      assembled.referral_count = cm.referral_count ?? null
+      assembled.renewal_count = sm.renewal_count ?? null
+      assembled.upgrade_count = sm.upgrade_count ?? null
+    }
+
+    // 写入 summary 响应对象
+    for (const k of Object.keys(summary)) delete summary[k]
+    Object.assign(summary, assembled)
+  } catch (err) {
+    ElMessage.error('获取汇总数据失败')
   } finally {
     loading.value = false
   }
 }
 
-// 初始化
-onMounted(async () => {
-  await fetchUserGroups()
-  await fetchAnalytics()
-})
+// 获取趋势数据
+async function fetchTrend(metricKey) {
+  loading.value = true
+  try {
+    const [start, end] = customDateRange.value || []
+    // 映射到后端支持的趋势指标
+    const isCC = roleScope.value === 'CC'
+    const isSS = roleScope.value === 'SS'
+    let metrics = []
+    let identity_type = undefined
+    if (metricKey === 'period_sales_amount') {
+      metrics = isSS ? ['renewal_amount', 'upgrade_amount'] : ['new_sign_amount', 'referral_amount']
+    } else if (metricKey === 'period_referral_amount') {
+      metrics = ['referral_amount']
+    } else if (metricKey === 'period_renewal_amount') {
+      metrics = ['renewal_amount']
+    } else if (metricKey === 'period_upgrade_amount') {
+      metrics = ['upgrade_amount']
+    } else if (metricKey === 'referral_count') {
+      metrics = ['referral_count']
+    } else if (metricKey === 'renewal_count') {
+      metrics = ['renewal_count']
+    } else if (metricKey === 'upgrade_count') {
+      metrics = ['upgrade_count']
+    } else {
+      // 其他指标暂不支持趋势
+      trendSeries.value = []
+      loading.value = false
+      return
+    }
+    if (isCC) identity_type = 'CC'
+    if (isSS) identity_type = 'SS'
+
+    const { data } = await api.get('/analytics/trend', {
+      params: {
+        start_date: start,
+        end_date: end,
+        identity_type,
+        metrics
+      }
+    })
+    const series = data?.series || []
+    trendSeries.value = series.map(item => {
+      const v = (() => {
+        if (metricKey === 'period_sales_amount') {
+          const ns = Number(item.new_sign_amount || 0)
+          const rf = Number(item.referral_amount || 0)
+          const rn = Number(item.renewal_amount || 0)
+          const ug = Number(item.upgrade_amount || 0)
+          // ALL 兼容：汇总可能包含全部四项
+          return ns + rf + rn + ug
+        }
+        const kmap = {
+          period_referral_amount: 'referral_amount',
+          period_renewal_amount: 'renewal_amount',
+          period_upgrade_amount: 'upgrade_amount',
+          referral_count: 'referral_count',
+          renewal_count: 'renewal_count',
+          upgrade_count: 'upgrade_count'
+        }
+        const k = kmap[metricKey]
+        return Number(item[k] || 0)
+      })()
+      return { date: item.date, value: v }
+    })
+  } catch (err) {
+    ElMessage.error('获取趋势数据失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 激活卡片
+function activateCard(metricKey) {
+  activeMetricKey.value = metricKey
+  fetchTrend(metricKey)
+}
+
+// AI洞察（统一路由：/api/v1/ai/answer）
+async function fetchAIInsight(metricKey) {
+  aiLoadingMap[metricKey] = true
+  try {
+    const [start, end] = customDateRange.value || []
+    // 构建问题文本：强调当前指标
+    const question = `请生成当前筛选范围下的AI总结，并重点关注指标：${metricKey}`
+    const body = {
+      question,
+      output_target: selectedUserId.value ? 'personal' : 'team',
+      role_scope: roleScope.value || undefined,
+      group_id: selectedGroupId.value || undefined,
+      user_id: selectedUserId.value || undefined,
+      start_date: start,
+      end_date: end,
+      page_context: 'analytics',
+      identity_hint: roleScope.value || undefined
+    }
+    const { data } = await api.post('/ai/answer', body)
+    aiInsightText.value = data?.answer || '—'
+    aiDialogVisible.value = true
+  } catch (err) {
+    ElMessage.error('获取AI洞察失败')
+  } finally {
+    aiLoadingMap[metricKey] = false
+  }
+}
+
+// 展示格式
+function formatCardValue(card) {
+  const v = card.value
+  if (v === null || v === undefined) return '—'
+  if (card.isPercent) return `${Number(v).toFixed(0)}%`
+  if (card.unit === 'USD') return formatCurrency(v)
+  return `${v} ${card.unit || ''}`
+}
+
+function formatCurrency(v) {
+  if (v === null || v === undefined) return '—'
+  const num = Number(v) || 0
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(num)
+}
 </script>
 
 <style scoped>
-.time-range-selector {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-}
+.page-container { padding: 24px; }
+.page-header { margin-bottom: 16px; }
+.page-title { font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+.page-description { color: #909399; margin: 0; }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
-}
+.filters-bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.content-card { margin-bottom: 16px; }
+.card-header { display: flex; justify-content: space-between; align-items: center; }
 
-.stat-card {
-  .el-card__body {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 20px;
-  }
-}
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 16px 0; }
+.stat-card { cursor: pointer; }
+.stat-card.active { border-color: #409eff; }
+.stat-content .stat-value { font-size: 24px; font-weight: 700; color: #303133; }
+.stat-content .stat-label { color: #909399; font-size: 13px; margin-top: 4px; }
+.card-actions { margin-top: 8px; }
 
-.stat-content {
-  .stat-value {
-    font-size: 28px;
-    font-weight: bold;
-    color: #303133;
-    margin-bottom: 8px;
-  }
-  
-  .stat-label {
-    font-size: 14px;
-    color: #909399;
-  }
-}
-
-.stat-icon {
-  font-size: 40px;
-  color: #409EFF;
-  opacity: 0.8;
-}
-
-.charts-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
-  gap: 24px;
-  margin-bottom: 24px;
-}
-
-.chart-card {
-  min-height: 400px;
-}
-
-.chart-container {
-  width: 100%;
-  height: 300px;
-}
-
-.ai-stats-content {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
-  padding: 20px;
-}
-
-.ai-stat-item {
-  text-align: center;
-  
-  .ai-stat-label {
-    font-size: 14px;
-    color: #909399;
-    margin-bottom: 8px;
-  }
-  
-  .ai-stat-value {
-    font-size: 24px;
-    font-weight: bold;
-    color: #303133;
-  }
-}
-
-.user-performance-card {
-  grid-column: 1 / -1;
-}
-
-.user-performance-content {
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.ai-insights-card {
-  margin-top: 24px;
-}
-
-.ai-insights-content {
-  padding: 20px;
-}
-
-.insights-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 24px;
-}
-
-.insight-item {
-  h4 {
-    margin: 0 0 16px 0;
-    color: #303133;
-    font-size: 16px;
-  }
-}
-
-.insight-stats {
-  .insight-stat {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 8px;
-    
-    .label {
-      color: #909399;
-    }
-    
-    .value {
-      font-weight: bold;
-      color: #303133;
-    }
-  }
-}
-
-.keywords-container {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.keyword-tag {
-  margin: 0;
-}
-
-.model-usage {
-  .model-item {
-    padding: 12px;
-    border: 1px solid #EBEEF5;
-    border-radius: 4px;
-    margin-bottom: 8px;
-    
-    .model-name {
-      font-weight: bold;
-      margin-bottom: 4px;
-    }
-    
-    .model-stats {
-      font-size: 12px;
-      color: #909399;
-      
-      span {
-        margin-right: 16px;
-      }
-    }
-  }
-}
-
-@media (max-width: 768px) {
-  .time-range-selector {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .charts-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .ai-stats-content {
-    grid-template-columns: 1fr;
-  }
-  
-  .insights-grid {
-    grid-template-columns: 1fr;
-  }
-}
+.chart-card { margin-top: 8px; }
+.chart-container { width: 100%; height: 320px; }
 </style>

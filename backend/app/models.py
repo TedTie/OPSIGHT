@@ -77,6 +77,8 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     username = Column(String(50), unique=True, index=True, nullable=False)
+    # 用于存储密码哈希（bcrypt），不返回到接口
+    hashed_password = Column(String(255), nullable=True)
     role = Column(String(20), nullable=False, default='user')  # super_admin, admin, user
     identity_type = Column(String(10), nullable=True)  # cc, ss, lp (普通用户和管理员必须有身份类型)
     organization = Column(String(100), nullable=True)  # 组织名称
@@ -397,6 +399,16 @@ class DailyReport(Base):
     # KPI数据
     call_count = Column(Integer, default=0)
     call_duration = Column(Integer, default=0)  # 分钟
+
+    # 销售相关字段（用于数据分析）
+    new_sign_count = Column(Integer, default=0)        # 新签单数
+    new_sign_amount = Column(Float, default=0.0)       # 新签金额
+    referral_count = Column(Integer, default=0)        # 转介绍单数（CC）
+    referral_amount = Column(Float, default=0.0)       # 转介绍金额（CC）
+    renewal_count = Column(Integer, default=0)         # 续费次数
+    upgrade_count = Column(Integer, default=0)         # 升级次数
+    renewal_amount = Column(Float, default=0.0)        # 续费金额（SS）
+    upgrade_amount = Column(Float, default=0.0)        # 升舱金额（SS）
     
     # 反思数据
     achievements = Column(Text, nullable=True)
@@ -429,12 +441,54 @@ class DailyReport(Base):
             "efficiency_score": self.efficiency_score,
             "call_count": self.call_count,
             "call_duration": self.call_duration,
+            "new_sign_count": self.new_sign_count,
+            "new_sign_amount": self.new_sign_amount,
+            "referral_count": self.referral_count,
+            "referral_amount": self.referral_amount,
+            "renewal_count": self.renewal_count,
+            "renewal_amount": self.renewal_amount,
+            "upgrade_count": self.upgrade_count,
+            "upgrade_amount": self.upgrade_amount,
             "achievements": self.achievements,
             "challenges": self.challenges,
             "tomorrow_plan": self.tomorrow_plan,
             "ai_analysis": self.ai_analysis,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+class AdminMetric(Base):
+    """管理员指标模型"""
+    __tablename__ = "admin_metrics"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    key = Column(String(100), nullable=False, unique=True)  # 指标唯一键
+    name = Column(String(200), nullable=False)              # 指标名称
+    description = Column(Text, nullable=True)               # 说明
+    identity_scope = Column(String(20), nullable=True)      # 视角：CC/SS/LP/ALL/CC_SS
+    target_count = Column(Integer, nullable=True)           # 目标数量
+    target_amount = Column(Float, nullable=True)            # 目标金额
+    unit = Column(String(20), nullable=True)                # 单位：%、次、元
+    is_active = Column(Boolean, default=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "key": self.key,
+            "name": self.name,
+            "description": self.description,
+            "identity_scope": self.identity_scope,
+            "target_count": self.target_count,
+            "target_amount": self.target_amount,
+            "unit": self.unit,
+            "is_active": self.is_active,
+            "created_by": self.created_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
 
@@ -714,3 +768,59 @@ class JielongRecord(Base):
     
     task = relationship("Task")
     owner = relationship("User")
+
+
+class MonthlyGoal(Base):
+    """月度目标模型：按身份与作用域设置当月目标（金额/人数）。"""
+    __tablename__ = "monthly_goals"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    identity_type = Column(String(10), nullable=False)  # CC / SS
+    scope = Column(String(10), nullable=False)  # global / group / user
+    year = Column(Integer, nullable=False)
+    month = Column(Integer, nullable=False)
+    group_id = Column(Integer, ForeignKey("user_groups.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    amount_target = Column(Float, nullable=False, default=0.0)  # 金额目标（CC/SS）
+    # 新增细分金额目标
+    new_sign_target_amount = Column(Float, nullable=False, default=0.0)  # CC 新单目标金额
+    referral_target_amount = Column(Float, nullable=False, default=0.0)  # CC 转介绍目标金额
+    renewal_total_target_amount = Column(Float, nullable=False, default=0.0)  # SS 总续费目标金额（续费+升舱）
+    renewal_target_count = Column(Integer, nullable=False, default=0)  # SS 续费人数目标
+    upgrade_target_count = Column(Integer, nullable=False, default=0)  # SS 升舱人数目标
+    notes = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "identity_type": self.identity_type,
+            "scope": self.scope,
+            "year": self.year,
+            "month": self.month,
+            "group_id": self.group_id,
+            "user_id": self.user_id,
+            "amount_target": self.amount_target,
+            "new_sign_target_amount": self.new_sign_target_amount,
+            "referral_target_amount": self.referral_target_amount,
+            "renewal_total_target_amount": self.renewal_total_target_amount,
+            "renewal_target_count": self.renewal_target_count,
+            "upgrade_target_count": self.upgrade_target_count,
+            "notes": self.notes,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+# 通知已读记录：用于多端同步通知的已读状态
+class NotificationRead(Base):
+    __tablename__ = "notification_reads"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    notification_id = Column(String(255), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User")

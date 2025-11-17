@@ -13,7 +13,24 @@ def get_current_active_user(request: Request, db: Session = Depends(get_db)) -> 
     user_data = request.session.get('user')
     
     if not user_data:
-        raise HTTPException(status_code=401, detail="未认证")
+        # 如果会话不存在，尝试通过“记住我”Cookie自动恢复登录
+        remember_id = request.cookies.get("remember_me_user_id")
+        if remember_id:
+            user = db.query(User).filter(User.id == int(remember_id)).first()
+            if user and user.is_active:
+                # 恢复会话（同时兼容 main.py 的 get_current_user 依赖）
+                request.session['user'] = {
+                    "id": user.id,
+                    "username": user.username,
+                    "role": user.role,
+                    "group_id": getattr(user, "group_id", None),
+                    "identity_type": getattr(user, "identity_type", None),
+                }
+                request.session['user_id'] = user.id
+                request.session['username'] = user.username
+                user_data = request.session.get('user')
+        if not user_data:
+            raise HTTPException(status_code=401, detail="未认证")
     # 从数据库中获取最新的用户信息（好习惯，以防用户信息被后台更改）
     user = db.query(User).filter(User.id == user_data.get('id')).first()
     if not user:

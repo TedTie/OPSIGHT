@@ -9,7 +9,7 @@ const Login = () => import('@/views/Login.vue')
 const Dashboard = () => import('@/views/Dashboard.vue')
 const Tasks = () => import('@/views/Tasks.vue')
 const Reports = () => import('@/views/Reports.vue')
-const Analytics = () => import('@/views/Analytics.vue')
+const Analytics = () => import('@/views/AnalyticsDashboard.vue')
 const UserManagement = () => import('@/components/admin/UserManagement.vue')
 
 // 简单路由配置

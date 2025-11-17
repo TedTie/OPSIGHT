@@ -47,6 +47,7 @@ api.interceptors.response.use(
   (error) => {
     console.error('API Error:', error)
     const { response, config } = error
+    const suppress = !!(config && (config.suppressErrorMessage || config.suppressError))
     
     if (response) {
       switch (response.status) {
@@ -59,7 +60,7 @@ api.interceptors.response.use(
             // 登录接口返回401时，不做全局重定向，直接提示后端详情
             if (isLoginAttempt) {
               const detail = response.data?.detail
-              ElMessage.error(detail || '用户名不存在或账户已被禁用')
+              if (!suppress) ElMessage.error(detail || '用户名不存在或账户已被禁用')
               // 不清除现有登录态（可能是切换账号失败的场景）
               break
             }
@@ -68,23 +69,23 @@ api.interceptors.response.use(
             localStorage.removeItem('token')
             localStorage.removeItem('user')
             router.push('/login')
-            ElMessage.error('登录已过期，请重新登录')
+            if (!suppress) ElMessage.error('登录已过期，请重新登录')
           }
           break
         case 403:
-          ElMessage.error('权限不足')
+          if (!suppress) ElMessage.error('权限不足')
           break
         case 404:
-          ElMessage.error('请求的资源不存在')
+          if (!suppress) ElMessage.error('请求的资源不存在')
           break
         case 422:
           // 验证错误
           const detail = response.data?.detail
           if (Array.isArray(detail)) {
             const errors = detail.map(err => err.msg).join(', ')
-            ElMessage.error(`验证错误: ${errors}`)
+            if (!suppress) ElMessage.error(`验证错误: ${errors}`)
           } else {
-            ElMessage.error(detail || '请求参数错误')
+            if (!suppress) ElMessage.error(detail || '请求参数错误')
           }
           break
         case 500:
@@ -92,7 +93,7 @@ api.interceptors.response.use(
             const serverDetail = response.data?.detail || response.data?.message || response.data?.error
             const reqUrl = (config && config.url) ? String(config.url) : ''
             const showText = serverDetail ? `服务器内部错误：${serverDetail}` : '服务器内部错误'
-            ElMessage.error(showText)
+            if (!suppress) ElMessage.error(showText)
             // 输出更详细的上下文，便于定位后端异常源
             console.error('[API] 500 Internal Server Error', {
               url: reqUrl,
@@ -103,7 +104,7 @@ api.interceptors.response.use(
           }
           break
         default:
-          ElMessage.error(response.data?.detail || '请求失败')
+          if (!suppress) ElMessage.error(response.data?.detail || '请求失败')
       }
     } else {
       // 网络错误 - 提供更详细的错误信息
@@ -114,17 +115,19 @@ api.interceptors.response.use(
         stack: error.stack
       })
       
-      if (error.code === 'ECONNREFUSED' || error.message.includes('ECONNREFUSED')) {
-        ElMessage.error('无法连接到服务器，请确认后端服务是否启动')
-      } else if (error.code === 'NETWORK_ERROR' || error.message.includes('Network Error')) {
-        ElMessage.error('网络错误，请检查网络连接和CORS配置')
-      } else if (error.message.includes('timeout')) {
-        ElMessage.error('请求超时，请稍后重试')
-      } else {
-        ElMessage.error(`网络连接失败: ${error.message}`)
+      if (!suppress) {
+        if (error.code === 'ECONNREFUSED' || error.message.includes('ECONNREFUSED')) {
+          ElMessage.error('无法连接到服务器，请确认后端服务是否启动')
+        } else if (error.code === 'NETWORK_ERROR' || error.message.includes('Network Error')) {
+          ElMessage.error('网络错误，请检查网络连接和CORS配置')
+        } else if (error.message.includes('timeout')) {
+          ElMessage.error('请求超时，请稍后重试')
+        } else {
+          ElMessage.error(`网络连接失败: ${error.message}`)
+        }
       }
     }
-    
+
     return Promise.reject(error)
   }
 )

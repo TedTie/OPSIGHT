@@ -326,11 +326,18 @@
 <script setup>
 import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  Search, Plus, Refresh, View, Edit, Delete, 
-  UploadFilled, Download, Document, DataAnalysis,
-  User, School
-} from '@element-plus/icons-vue'
+import Search from '~icons/tabler/search'
+import Plus from '~icons/tabler/plus'
+import Refresh from '~icons/tabler/refresh'
+import View from '~icons/tabler/eye'
+import Edit from '~icons/tabler/edit'
+import Delete from '~icons/tabler/trash'
+import UploadFilled from '~icons/tabler/upload'
+import Download from '~icons/tabler/download'
+import Document from '~icons/tabler/file-text'
+import DataAnalysis from '~icons/tabler/chart-dots-2'
+import User from '~icons/tabler/user'
+import School from '~icons/tabler/school'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import api from '@/utils/api'

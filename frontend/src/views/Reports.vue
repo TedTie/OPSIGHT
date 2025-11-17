@@ -74,13 +74,13 @@
           <el-select
             v-if="isSuperAdmin"
             v-model="selectedRoleType"
-            placeholder="身份类型(CC/SS/LP)"
+            placeholder="身份类型(CC(顾问)/SS(班主任)/LP(英文辅导))"
             clearable
             @change="refreshUserOptions"
           >
-            <el-option label="CC" value="cc" />
-            <el-option label="SS" value="ss" />
-            <el-option label="LP" value="lp" />
+            <el-option label="CC(顾问)" value="cc" />
+            <el-option label="SS(班主任)" value="ss" />
+            <el-option label="LP(英文辅导)" value="lp" />
           </el-select>
 
           <el-select
@@ -606,7 +606,12 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search, Refresh, User, OfficeBuilding, Calendar } from '@element-plus/icons-vue'
+import Plus from '~icons/tabler/plus'
+import Search from '~icons/tabler/search'
+import Refresh from '~icons/tabler/refresh'
+import User from '~icons/tabler/user'
+import OfficeBuilding from '~icons/tabler/building'
+import Calendar from '~icons/tabler/calendar'
 import { formatDate, formatDateTime } from '@/utils/date'
 import { formatDistanceToNow } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
@@ -703,9 +708,9 @@ const summaryScopeUserId = ref(null)
 const summaryScopeGroupId = ref(null)
 const summaryScopeIdentity = ref(null)
 const identityOptions = ref([
-  { label: 'CC', value: 'cc' },
-  { label: 'SS', value: 'ss' },
-  { label: 'LP', value: 'lp' }
+  { label: 'CC(顾问)', value: 'cc' },
+  { label: 'SS(班主任)', value: 'ss' },
+  { label: 'LP(英文辅导)', value: 'lp' }
 ])
 
 // 表单验证规则

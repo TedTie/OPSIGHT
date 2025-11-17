@@ -376,7 +376,7 @@ onMounted(() => {
 
 /* 用户概览样式 */
 .user-overview {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--brand-gradient);
   color: white;
 }
 

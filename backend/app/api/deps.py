@@ -80,13 +80,15 @@ def apply_visibility_filters(query: Query, user: User, model_class: Type) -> Que
     if model_class is DailyReport:
         # 可见性规则：
         # - 超管已在上方返回全部
-        # - 管理员：仅查看本组成员的日报；若未设置组，则仅查看本人
+        # - 管理员：
+        #   - 若设置了组：仅查看本组成员的日报
+        #   - 若未设置组：为避免页面“空数据”体验，允许查看全部日报
         # - 普通用户：仅查看本人
         if getattr(user, "is_admin", False):
             if getattr(user, "group_id", None) is not None:
                 return query.join(User, DailyReport.user_id == User.id).filter(User.group_id == user.group_id)
-            else:
-                return query.filter(DailyReport.user_id == user.id)
+            # 管理员无组时，放宽为查看全部（与 can_view_all_reports 语义更一致）
+            return query
         return query.filter(DailyReport.user_id == user.id)
 
     # 其他模型暂不处理

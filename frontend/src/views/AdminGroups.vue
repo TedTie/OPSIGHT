@@ -211,7 +211,9 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search, Refresh } from '@element-plus/icons-vue'
+import Plus from '~icons/tabler/plus'
+import Search from '~icons/tabler/search'
+import Refresh from '~icons/tabler/refresh'
 import { formatDateTime } from '@/utils/date'
 import { formatUserRole, getUserRoleColor } from '@/utils/auth'
 import { useAuthStore } from '@/stores/auth'

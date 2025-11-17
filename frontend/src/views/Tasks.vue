@@ -949,7 +949,11 @@
 import { ref, reactive, onMounted, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search, Refresh, Check, Close } from '@element-plus/icons-vue'
+import Plus from '~icons/tabler/plus'
+import Search from '~icons/tabler/search'
+import Refresh from '~icons/tabler/refresh'
+import Check from '~icons/tabler/check'
+import Close from '~icons/tabler/x'
 import { formatDateTime } from '@/utils/date'
 import api from '@/utils/api'
 

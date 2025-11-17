@@ -166,7 +166,23 @@
             <el-option label="SA(超级分析师)" value="sa" />
           </el-select>
         </el-form-item>
-        
+
+        <!-- 创建时必须填写初始密码与确认密码 -->
+        <el-form-item v-if="!isEdit" label="初始密码" prop="password">
+          <el-input v-model="form.password" type="password" placeholder="请输入至少6位密码" show-password />
+        </el-form-item>
+        <el-form-item v-if="!isEdit" label="确认密码" prop="confirm_password">
+          <el-input v-model="form.confirm_password" type="password" placeholder="请再次输入" show-password />
+        </el-form-item>
+
+        <!-- 编辑时支持修改密码（留空不改） -->
+        <el-form-item v-if="isEdit" label="新密码" prop="password">
+          <el-input v-model="form.password" type="password" placeholder="留空则不修改" show-password />
+        </el-form-item>
+        <el-form-item v-if="isEdit" label="确认密码" prop="confirm_password">
+          <el-input v-model="form.confirm_password" type="password" placeholder="请再次输入" show-password />
+        </el-form-item>
+
         <el-form-item label="组别" prop="group_id">
           <el-select v-model="form.group_id" style="width: 100%" clearable placeholder="请选择组别">
             <el-option 
@@ -196,7 +212,9 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search, Refresh } from '@element-plus/icons-vue'
+import Plus from '~icons/tabler/plus'
+import Search from '~icons/tabler/search'
+import Refresh from '~icons/tabler/refresh'
 import { formatDateTime } from '@/utils/date'
 import { formatUserRole, getUserRoleColor } from '@/utils/auth'
 import api from '@/utils/api'
@@ -242,7 +260,9 @@ const form = reactive({
   role: 'user',
   identity_type: null,
   group_id: null,
-  is_active: true
+  is_active: true,
+  password: '',
+  confirm_password: ''
 })
 
 // 表单验证规则
@@ -253,6 +273,37 @@ const formRules = {
   ],
   role: [
     { required: true, message: '请选择权限', trigger: 'change' }
+  ],
+  password: [
+    {
+      validator: (rule, value, callback) => {
+        // 创建时必填且至少6位；编辑时可选，填写则至少6位
+        if (!isEdit.value) {
+          if (!value || String(value).length < 6) return callback(new Error('密码至少6位'))
+          return callback()
+        }
+        if (!value) return callback()
+        if (String(value).length < 6) return callback(new Error('密码至少6位'))
+        return callback()
+      },
+      trigger: 'blur'
+    }
+  ],
+  confirm_password: [
+    {
+      validator: (rule, value, callback) => {
+        // 创建时必须与密码一致；编辑时仅在填写密码时需要一致
+        if (!isEdit.value) {
+          if (!value) return callback(new Error('请再次输入密码'))
+          if (value !== form.password) return callback(new Error('两次输入的密码不一致'))
+          return callback()
+        }
+        if (!form.password) return callback()
+        if (value !== form.password) return callback(new Error('两次输入的密码不一致'))
+        return callback()
+      },
+      trigger: 'blur'
+    }
   ]
 }
 
@@ -308,7 +359,9 @@ const editUser = (user) => {
     role: user.role || 'user',
     identity_type: user.identity_type || null,
     group_id: user.group_id || null,
-    is_active: user.is_active
+    is_active: user.is_active,
+    password: '',
+    confirm_password: ''
   })
   dialogVisible.value = true
 }
@@ -322,7 +375,9 @@ const resetForm = () => {
     role: 'user',
     identity_type: null,
     group_id: null,
-    is_active: true
+    is_active: true,
+    password: '',
+    confirm_password: ''
   })
   formRef.value?.clearValidate()
 }
@@ -334,10 +389,17 @@ const submitForm = async () => {
     submitting.value = true
     
     if (isEdit.value) {
-      await api.put(`/users/${form.id}`, form)
+      // 仅在填写新密码时提交密码；不提交确认字段
+      const payload = { ...form }
+      if (!payload.password) delete payload.password
+      delete payload.confirm_password
+      await api.put(`/users/${form.id}`, payload)
       ElMessage.success('更新成功')
     } else {
-      await api.post('/users', form)
+      // 创建时后端不接收 confirm_password 字段，避免422
+      const payload = { ...form }
+      delete payload.confirm_password
+      await api.post('/users', payload)
       ElMessage.success('创建成功')
     }
     

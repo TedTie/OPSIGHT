@@ -10,6 +10,7 @@ import router from './router'
 import pinia from './stores'
 import { useAuthStore } from './stores/auth'
 import { canDirective } from './directives/can'
+import { clickSparkDirective } from './directives/clickSpark'
 // 开发环境调试：捕获非法 setAttribute（如属性名为数字）
 // 仅在开发模式启用，不影响生产环境
 if (import.meta && import.meta.env && import.meta.env.DEV) {
@@ -53,10 +54,27 @@ app.use(pinia)
 
 // 注册自定义指令
 app.directive('can', canDirective)
+app.directive('click-spark', clickSparkDirective)
 
 // 初始化认证状态
 const authStore = useAuthStore()
 authStore.initAuth()
+
+// 开发模式：仅在启用 Mock 时注入默认登录态，避免真实后端校验出错
+if (import.meta && import.meta.env && import.meta.env.DEV) {
+  const useMock = String(import.meta.env.VITE_USE_MOCK || '').toLowerCase() === 'true'
+  if (useMock) {
+    const savedToken = localStorage.getItem('token')
+    const savedUser = localStorage.getItem('user')
+    if (!savedToken || !savedUser) {
+      const devUser = { id: 1, username: 'demo', role: 'super_admin' }
+      localStorage.setItem('token', 'dev-token')
+      localStorage.setItem('user', JSON.stringify(devUser))
+      // 重新初始化一次，确保内存状态同步
+      authStore.initAuth()
+    }
+  }
+}
 
 // 全局错误处理：记录详细信息，帮助定位 InvalidCharacterError
 if (import.meta && import.meta.env && import.meta.env.DEV) {

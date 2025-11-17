@@ -4,14 +4,14 @@ KillerApp Backend Main Application
 FastAPI 主应用程序文件
 """
 
-from fastapi import FastAPI, HTTPException, Depends, status, Query, Request, Response
+from fastapi import FastAPI, HTTPException, Depends, status, Query, Request, Response, Body
 from app.crud import task_crud
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import create_engine, func, and_, or_
+from sqlalchemy import create_engine, func, and_, or_, text
 from sqlalchemy.orm import sessionmaker
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta, date
@@ -27,9 +27,9 @@ from pathlib import Path
 # 导入数据库模型和配置
 from .db import SessionLocal, engine, Base, get_db
 from .models import (
-    User, Task, DailyReport, UserGroup, AIAgent, AIFunction, 
+    User, Task, DailyReport, UserGroup, AIAgent, AIFunction, AIFunctionType,
     AICallLog, AISettings, SystemSettings, TaskStatus, CallStatus, TaskAssignmentType, JielongRecord, TaskType,
-    TaskRecord, TaskCompletion
+    TaskRecord, TaskCompletion, MonthlyGoal, NotificationRead
 )
 from .schemas import (
     UserResponse, UserCreateRequest, UserUpdateRequest,
@@ -44,10 +44,15 @@ from .schemas import (
     SystemSettingsResponse, SystemSettingsUpdateRequest,
     PaginatedAICallLogResponse, LoginRequest, AuthResponse,
     PaginatedUserResponse, PaginatedTaskResponse,
-    AddMembersRequest, RemoveMemberRequest
+    AddMembersRequest, RemoveMemberRequest,
+    MonthlyGoalUpsertRequest, MonthlyGoalResponse,
+    AISystemKnowledgeResponse, AIChatRequest, AIChatResponse,
+    AIAnswerRequest, AIAnswerResponse,
+    NotificationReadSyncRequest, NotificationReadMapResponse
 )
 from .api.deps import apply_visibility_filters
 from .api.v1.endpoints.tasks import router as tasks_v1_router
+from .core.security import verify_password, get_password_hash
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -55,6 +60,141 @@ logger = logging.getLogger(__name__)
 
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
+
+# 运行时迁移：为 daily_reports 表添加新增销售相关列（SQLite 兼容）
+def _ensure_daily_report_sales_columns():
+    try:
+        with engine.connect() as conn:
+            cols = [row[1] for row in conn.execute(text("PRAGMA table_info(daily_reports);")).fetchall()]
+            additions = [
+                ("new_sign_count", "INTEGER DEFAULT 0"),
+                ("new_sign_amount", "FLOAT DEFAULT 0.0"),
+                ("renewal_count", "INTEGER DEFAULT 0"),
+                ("upgrade_count", "INTEGER DEFAULT 0"),
+                ("referral_count", "INTEGER DEFAULT 0"),
+                ("referral_amount", "FLOAT DEFAULT 0.0"),
+                ("renewal_amount", "FLOAT DEFAULT 0.0"),
+                ("upgrade_amount", "FLOAT DEFAULT 0.0"),
+            ]
+            for name, decl in additions:
+                if name not in cols:
+                    try:
+                        conn.execute(text(f"ALTER TABLE daily_reports ADD COLUMN {name} {decl};"))
+                        logger.info(f"Added column daily_reports.{name}")
+                    except Exception as e:
+                        logger.warning(f"Failed to add column {name}: {e}")
+    except Exception as e:
+        logger.warning(f"DailyReport column ensure failed: {e}")
+
+_ensure_daily_report_sales_columns()
+
+# 运行时迁移：为 monthly_goals 表添加新增目标金额列（SQLite 兼容）
+def _ensure_monthly_goal_target_columns():
+    try:
+        with engine.connect() as conn:
+            cols = [row[1] for row in conn.execute(text("PRAGMA table_info(monthly_goals);")).fetchall()]
+            additions = [
+                ("new_sign_target_amount", "FLOAT DEFAULT 0.0"),
+                ("referral_target_amount", "FLOAT DEFAULT 0.0"),
+                ("renewal_total_target_amount", "FLOAT DEFAULT 0.0"),
+            ]
+            for name, decl in additions:
+                if name not in cols:
+                    try:
+                        conn.execute(text(f"ALTER TABLE monthly_goals ADD COLUMN {name} {decl};"))
+                        logger.info(f"Added column monthly_goals.{name}")
+                    except Exception as e:
+                        logger.warning(f"Failed to add column {name}: {e}")
+    except Exception as e:
+        logger.warning(f"MonthlyGoal column ensure failed: {e}")
+
+_ensure_monthly_goal_target_columns()
+
+# 运行时迁移：确保 users 表存在 hashed_password 列
+def _ensure_users_password_column():
+    try:
+        with engine.connect() as conn:
+            cols = [row[1] for row in conn.execute(text("PRAGMA table_info(users);")).fetchall()]
+            if "hashed_password" not in cols:
+                try:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN hashed_password TEXT;"))
+                    logger.info("Added column users.hashed_password")
+                except Exception as e:
+                    logger.warning(f"Failed to add users.hashed_password: {e}")
+    except Exception as e:
+        logger.warning(f"Users password column ensure failed: {e}")
+
+_ensure_users_password_column()
+
+def _ensure_default_admin_user():
+    try:
+        db = SessionLocal()
+        admin = db.query(User).filter(User.username == "admin").first()
+        if not admin:
+            admin = User(
+                username="admin",
+                role="super_admin",
+                identity_type="sa",
+                is_active=True,
+                hashed_password=get_password_hash("admin123"))
+            db.add(admin)
+            db.commit()
+        elif not admin.hashed_password:
+            admin.hashed_password = get_password_hash("admin123")
+            db.commit()
+
+        demo = db.query(User).filter(User.username == "demo").first()
+        if not demo:
+            demo = User(
+                username="demo",
+                role="super_admin",
+                identity_type="sa",
+                is_active=True,
+                hashed_password=get_password_hash("demo123"))
+            db.add(demo)
+            db.commit()
+        db.close()
+    except Exception as e:
+        logger.warning(f"Default admin ensure failed: {e}")
+
+_ensure_default_admin_user()
+
+# 运行时初始化：确保默认功能点存在（若有默认智能体）
+def _ensure_default_ai_functions():
+    try:
+        db = SessionLocal()
+        # 查找默认智能体
+        default_agent = db.query(AIAgent).filter(AIAgent.is_active == True, AIAgent.is_default == True).order_by(AIAgent.created_at.asc()).first()
+        if not default_agent:
+            # 若无默认智能体，则跳过
+            db.close()
+            return
+
+        existing = {f.name for f in db.query(AIFunction).all()}
+        need_create = []
+        if "个人数据洞察" not in existing:
+            need_create.append("个人数据洞察")
+        if "团队数据洞察" not in existing:
+            need_create.append("团队数据洞察")
+
+        for name in need_create:
+            func = AIFunction(
+                name=name,
+                description=("AI 输出组织：个人视角" if name == "个人数据洞察" else "AI 输出组织：团队视角"),
+                function_type=AIFunctionType.CUSTOM,
+                agent_id=default_agent.id,
+                is_active=True,
+                created_by=1  # 默认由系统创建；如无用户1，后续更新
+            )
+            db.add(func)
+        if need_create:
+            db.commit()
+        db.close()
+    except Exception as e:
+        # 初始化失败不影响服务启动
+        logger.warning(f"初始化默认AI功能失败: {e}")
+
+_ensure_default_ai_functions()
 
 # 创建 FastAPI 应用
 app = FastAPI(
@@ -78,8 +218,12 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:3001",
         "http://127.0.0.1:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:3003",
+        "http://127.0.0.1:3003",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -185,6 +329,7 @@ async def health_check():
 async def login(
     login_request: LoginRequest,
     request: Request,
+    response: Response,
     db: Session = Depends(get_db)
 ):
     """用户登录"""
@@ -202,8 +347,12 @@ async def login(
             detail="账户已被禁用"
         )
     
-    # 在实际应用中，这里应该验证密码
-    # 暂时跳过密码验证
+    # 密码验证
+    if not user.hashed_password or not verify_password(login_request.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="用户名或密码错误"
+        )
     
     # 设置会话
     request.session["user_id"] = user.id
@@ -228,6 +377,14 @@ async def login(
         print(f"[DEBUG-JWT-PAYLOAD-ERROR]: {e}")
     # --- 结束调试 ---
     
+    # 记住我：设置 30 天的复活 Cookie（不含敏感信息，仅 user_id）
+    if login_request.remember_me:
+        response.set_cookie(
+            key="remember_me_user_id",
+            value=str(user.id),
+            max_age=30 * 24 * 60 * 60,
+            httponly=True
+        )
     return AuthResponse(
         message="登录成功",
         user=UserResponse(
@@ -248,9 +405,10 @@ async def login(
     )
 
 @app.post("/api/v1/auth/logout")
-async def logout(request: Request):
+async def logout(request: Request, response: Response):
     """用户登出"""
     request.session.clear()
+    response.delete_cookie("remember_me_user_id")
     return {"message": "登出成功"}
 
 @app.get("/api/v1/auth/me", response_model=UserResponse)
@@ -566,10 +724,66 @@ async def remove_group_member(
 
 # ==================== 用户管理 API ====================
 
+@app.post("/api/v1/users", response_model=UserResponse)
+async def create_user(
+    user_request: UserCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """创建用户（仅超级管理员）"""
+    if not current_user.is_super_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="需要超级管理员权限"
+        )
+
+    if not user_request.username or len(user_request.username) < 3:
+        raise HTTPException(status_code=400, detail="用户名长度至少3位")
+    if not user_request.password or len(user_request.password) < 6:
+        raise HTTPException(status_code=400, detail="密码长度至少6位")
+
+    exists = db.query(User).filter(User.username == user_request.username).first()
+    if exists:
+        raise HTTPException(status_code=400, detail="用户名已存在")
+
+    is_active_val = getattr(user_request, "is_active", True)
+    new_user = User(
+        username=user_request.username,
+        role=user_request.role,
+        identity_type=user_request.identity_type,
+        organization=user_request.organization,
+        group_id=user_request.group_id,
+        is_active=is_active_val if is_active_val is not None else True,
+        hashed_password=get_password_hash(user_request.password)
+    )
+
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    return UserResponse(
+        id=new_user.id,
+        username=new_user.username,
+        role=new_user.role,
+        identity_type=new_user.identity_type,
+        full_identity=new_user.get_full_identity(),
+        ai_knowledge_branch=new_user.get_ai_knowledge_branch(),
+        organization=new_user.organization,
+        group_id=new_user.group_id,
+        group_name=new_user.group.name if new_user.group else None,
+        is_active=new_user.is_active,
+        is_admin=new_user.is_admin,
+        is_super_admin=new_user.is_super_admin,
+        created_at=new_user.created_at
+    )
+
 @app.get("/api/v1/users", response_model=PaginatedUserResponse)
 async def get_users(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
+    search: Optional[str] = Query(None),
+    role: Optional[str] = Query(None),
+    is_active: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -585,6 +799,13 @@ async def get_users(
         )
 
     query = db.query(User)
+    # 过滤条件（兼容前端筛选）
+    if search:
+        query = query.filter(User.username.like(f"%{search}%"))
+    if role:
+        query = query.filter(User.role == role)
+    if is_active is not None:
+        query = query.filter(User.is_active == is_active)
     if current_user.is_admin and not current_user.is_super_admin:
         # 管理员仅查看所属组内用户；若未设置组，则返回空列表
         if current_user.group_id is not None:
@@ -680,8 +901,20 @@ async def update_user(
             detail="用户不存在"
         )
     
-    # 更新字段
-    for field, value in user_request.dict(exclude_unset=True).items():
+    # 更新字段（处理密码单独逻辑）
+    update_data = user_request.dict(exclude_unset=True)
+    # 若前端传入 password，则进行校验与哈希后写入 hashed_password
+    if "password" in update_data:
+        pwd = update_data.pop("password")
+        if pwd:
+            if len(pwd) < 6:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="密码长度至少6位"
+                )
+            user.hashed_password = get_password_hash(pwd)
+    # 其余字段直接更新
+    for field, value in update_data.items():
         setattr(user, field, value)
     
     db.commit()
@@ -692,9 +925,14 @@ async def update_user(
         username=user.username,
         role=user.role,
         identity_type=user.identity_type,
+        full_identity=user.get_full_identity(),
+        ai_knowledge_branch=user.get_ai_knowledge_branch(),
         organization=user.organization,
+        group_id=user.group_id,
+        group_name=user.group.name if user.group else None,
         is_active=user.is_active,
         is_admin=user.is_admin,
+        is_super_admin=user.is_super_admin,
         created_at=user.created_at
     )
 
@@ -1434,6 +1672,10 @@ async def create_report(
         efficiency_score=report_request.efficiency_score,
         call_count=report_request.call_count,
         call_duration=report_request.call_duration,
+        new_sign_count=report_request.new_sign_count,
+        new_sign_amount=report_request.new_sign_amount,
+        renewal_count=report_request.renewal_count,
+        upgrade_count=report_request.upgrade_count,
         achievements=report_request.achievements,
         challenges=report_request.challenges,
         tomorrow_plan=report_request.tomorrow_plan
@@ -1462,6 +1704,14 @@ async def create_report(
         efficiency_score=(report.efficiency_score if report.efficiency_score is not None else 0),
         call_count=(report.call_count if report.call_count is not None else 0),
         call_duration=(report.call_duration if report.call_duration is not None else 0),
+        new_sign_count=(report.new_sign_count if report.new_sign_count is not None else 0),
+        new_sign_amount=(report.new_sign_amount if report.new_sign_amount is not None else 0.0),
+        referral_count=(getattr(report, 'referral_count', 0) or 0),
+        referral_amount=(getattr(report, 'referral_amount', 0.0) or 0.0),
+        renewal_count=(report.renewal_count if report.renewal_count is not None else 0),
+        renewal_amount=(getattr(report, 'renewal_amount', 0.0) or 0.0),
+        upgrade_count=(report.upgrade_count if report.upgrade_count is not None else 0),
+        upgrade_amount=(getattr(report, 'upgrade_amount', 0.0) or 0.0),
         achievements=report.achievements or "",
         challenges=report.challenges or "",
         tomorrow_plan=report.tomorrow_plan or "",
@@ -1538,6 +1788,14 @@ async def get_reports(
                 efficiency_score=(r.efficiency_score if r.efficiency_score is not None else 0),
                 call_count=(r.call_count if r.call_count is not None else 0),
                 call_duration=(r.call_duration if r.call_duration is not None else 0),
+                new_sign_count=(getattr(r, 'new_sign_count', 0) or 0),
+                new_sign_amount=(getattr(r, 'new_sign_amount', 0.0) or 0.0),
+                referral_count=(getattr(r, 'referral_count', 0) or 0),
+                referral_amount=(getattr(r, 'referral_amount', 0.0) or 0.0),
+                renewal_count=(getattr(r, 'renewal_count', 0) or 0),
+                renewal_amount=(getattr(r, 'renewal_amount', 0.0) or 0.0),
+                upgrade_count=(getattr(r, 'upgrade_count', 0) or 0),
+                upgrade_amount=(getattr(r, 'upgrade_amount', 0.0) or 0.0),
                 achievements=r.achievements or "",
                 challenges=r.challenges or "",
                 tomorrow_plan=r.tomorrow_plan or "",
@@ -1588,6 +1846,14 @@ async def get_report(
         efficiency_score=report.efficiency_score,
         call_count=report.call_count,
         call_duration=report.call_duration,
+        referral_count=(getattr(report, 'referral_count', 0) or 0),
+        referral_amount=(getattr(report, 'referral_amount', 0.0) or 0.0),
+        new_sign_count=(getattr(report, 'new_sign_count', 0) or 0),
+        new_sign_amount=(getattr(report, 'new_sign_amount', 0.0) or 0.0),
+        renewal_count=(getattr(report, 'renewal_count', 0) or 0),
+        renewal_amount=(getattr(report, 'renewal_amount', 0.0) or 0.0),
+        upgrade_count=(getattr(report, 'upgrade_count', 0) or 0),
+        upgrade_amount=(getattr(report, 'upgrade_amount', 0.0) or 0.0),
         achievements=report.achievements,
         challenges=report.challenges,
         tomorrow_plan=report.tomorrow_plan,
@@ -1712,6 +1978,14 @@ async def build_report_tasks_snapshot(
         efficiency_score=report.efficiency_score,
         call_count=report.call_count,
         call_duration=report.call_duration,
+        referral_count=(getattr(report, 'referral_count', 0) or 0),
+        referral_amount=(getattr(report, 'referral_amount', 0.0) or 0.0),
+        new_sign_count=(getattr(report, 'new_sign_count', 0) or 0),
+        new_sign_amount=(getattr(report, 'new_sign_amount', 0.0) or 0.0),
+        renewal_count=(getattr(report, 'renewal_count', 0) or 0),
+        renewal_amount=(getattr(report, 'renewal_amount', 0.0) or 0.0),
+        upgrade_count=(getattr(report, 'upgrade_count', 0) or 0),
+        upgrade_amount=(getattr(report, 'upgrade_amount', 0.0) or 0.0),
         achievements=report.achievements,
         challenges=report.challenges,
         tomorrow_plan=report.tomorrow_plan,
@@ -1775,6 +2049,10 @@ async def update_report(
         efficiency_score=report.efficiency_score,
         call_count=report.call_count,
         call_duration=report.call_duration,
+        new_sign_count=(getattr(report, 'new_sign_count', 0) or 0),
+        new_sign_amount=(getattr(report, 'new_sign_amount', 0.0) or 0.0),
+        renewal_count=(getattr(report, 'renewal_count', 0) or 0),
+        upgrade_count=(getattr(report, 'upgrade_count', 0) or 0),
         achievements=report.achievements,
         challenges=report.challenges,
         tomorrow_plan=report.tomorrow_plan,
@@ -2221,6 +2499,46 @@ async def toggle_checkbox_task(
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"更新失败: {e}")
 
+# ==================== 通知已读同步 ====================
+@app.get("/api/v1/notifications/read-map", response_model=NotificationReadMapResponse)
+async def get_notification_read_map(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """返回当前用户已读通知ID列表，用于多端同步。"""
+    records = db.query(NotificationRead).filter(NotificationRead.user_id == current_user.id).all()
+    ids = [r.notification_id for r in records]
+    return NotificationReadMapResponse(ids=ids)
+
+
+@app.post("/api/v1/notifications/read")
+async def sync_notification_read(
+    payload: NotificationReadSyncRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """同步已读通知ID；幂等插入，不会重复。"""
+    ids = list(set(payload.ids or []))
+    if not ids:
+        return {"message": "ok", "saved": 0}
+
+    # 查询已存在记录，避免重复
+    existing = db.query(NotificationRead).\
+        filter(NotificationRead.user_id == current_user.id, NotificationRead.notification_id.in_(ids)).\
+        all()
+    existing_ids = {r.notification_id for r in existing}
+
+    to_create = [i for i in ids if i not in existing_ids]
+    for nid in to_create:
+        db.add(NotificationRead(user_id=current_user.id, notification_id=str(nid)))
+    try:
+        if to_create:
+            db.commit()
+        return {"message": "ok", "saved": len(to_create)}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"同步失败: {e}")
+
 # ==================== 管理员指标 API ====================
 
 @app.get("/api/v1/admin/metrics/stats")
@@ -2297,6 +2615,105 @@ async def get_admin_metrics_stats(
             "avgWorkHours": 0
         }
 
+# ==================== 系统维护 API ====================
+@app.delete("/api/v1/system/purge")
+async def purge_data_keep_admin(
+    keep_admin_tasks: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    if not getattr(current_user, "is_super_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="需要超级管理员权限")
+
+    admin = db.query(User).filter(User.username == "admin").first()
+    if not admin or not getattr(admin, "is_super_admin", False):
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="admin 超级管理员不存在或角色异常")
+
+    admin_id = admin.id
+
+    deleted = {
+        "ai_call_logs": 0,
+        "task_completions": 0,
+        "task_records": 0,
+        "daily_reports": 0,
+        "jielong_records": 0,
+        "tasks": 0,
+        "users": 0,
+        "user_groups": 0,
+        "monthly_goals": 0,
+        "notification_reads": 0,
+        "ai_agents": 0,
+        "ai_functions": 0,
+    }
+
+    try:
+        q_logs = db.query(AICallLog).filter(AICallLog.user_id != admin_id)
+        deleted["ai_call_logs"] = q_logs.count()
+        q_logs.delete(synchronize_session=False)
+
+        q_tc = db.query(TaskCompletion).filter(TaskCompletion.user_id != admin_id)
+        deleted["task_completions"] = q_tc.count()
+        q_tc.delete(synchronize_session=False)
+
+        q_tr = db.query(TaskRecord).filter(TaskRecord.user_id != admin_id)
+        deleted["task_records"] = q_tr.count()
+        q_tr.delete(synchronize_session=False)
+
+        q_reports = db.query(DailyReport).filter(DailyReport.user_id != admin_id)
+        deleted["daily_reports"] = q_reports.count()
+        q_reports.delete(synchronize_session=False)
+
+        q_jr = db.query(JielongRecord).filter(JielongRecord.user_id != admin_id)
+        deleted["jielong_records"] = q_jr.count()
+        q_jr.delete(synchronize_session=False)
+
+        if keep_admin_tasks:
+            q_tasks = db.query(Task).filter(
+                and_(
+                    Task.created_by != admin_id,
+                    or_(Task.assigned_to != admin_id, Task.assigned_to.is_(None)),
+                )
+            )
+        else:
+            q_tasks = db.query(Task)
+        deleted["tasks"] = q_tasks.count()
+        q_tasks.delete(synchronize_session=False)
+
+        q_nr = db.query(NotificationRead).filter(NotificationRead.user_id != admin_id)
+        deleted["notification_reads"] = q_nr.count()
+        q_nr.delete(synchronize_session=False)
+
+        q_goals = db.query(MonthlyGoal)
+        deleted["monthly_goals"] = q_goals.count()
+        q_goals.delete(synchronize_session=False)
+
+        q_funcs = db.query(AIFunction)
+        deleted["ai_functions"] = q_funcs.count()
+        q_funcs.delete(synchronize_session=False)
+
+        q_agents = db.query(AIAgent)
+        deleted["ai_agents"] = q_agents.count()
+        q_agents.delete(synchronize_session=False)
+
+        q_users = db.query(User).filter(User.id != admin_id)
+        deleted["users"] = q_users.count()
+        q_users.delete(synchronize_session=False)
+
+        deleted_groups = 0
+        groups = db.query(UserGroup).all()
+        for g in groups:
+            member_count = db.query(User).filter(User.group_id == g.id).count()
+            if member_count == 0:
+                db.delete(g)
+                deleted_groups += 1
+        deleted["user_groups"] = deleted_groups
+
+        db.commit()
+        return {"message": "数据清理完成（保留 admin）", "deleted": deleted, "admin_id": admin_id}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"清理失败: {str(e)}")
+
 # ==================== 新版数据分析 API ====================
 
 def _parse_date_range(start_date: Optional[str], end_date: Optional[str]) -> (date, date):
@@ -2316,6 +2733,62 @@ def _get_group_user_ids(db: Session, group_id: Optional[int]) -> List[int]:
         return []
     users = db.query(User).filter(User.group_id == group_id).all()
     return [u.id for u in users]
+
+def _get_user_ids_by_identity(db: Session, identity_types: List[str], group_id: Optional[int] = None) -> List[int]:
+    """按身份类型（CC/SS/LP）获取用户ID集合，可选限定组。
+    - identity_types: 例如 ["CC"], ["SS"], ["LP"], ["CC","SS"]
+    - group_id: 管理员/超管可选，限定在某个组内
+    """
+    if not identity_types:
+        return []
+    normalized = [t.upper() for t in identity_types]
+    q = db.query(User.id).filter(func.upper(User.identity_type).in_(normalized))
+    if group_id:
+        q = q.filter(User.group_id == group_id)
+    rows = q.all()
+    return [row[0] if isinstance(row, tuple) else row.id for row in rows]
+
+def _resolve_scope_and_identities(
+    db: Session,
+    current_user: User,
+    role_scope: Optional[str],
+    user_id: Optional[int],
+    group_id: Optional[int]
+) -> (str, Optional[List[str]]):
+    """根据权限与输入参数，计算有效的视角(scope)与身份过滤集合(identity_types)。
+    - 仅超级管理员可自由指定 role_scope；
+    - 管理员/普通用户忽略 role_scope：
+      * 若指定 user_id，则按该用户身份过滤；
+      * 否则按当前登录用户身份过滤；
+    返回：有效 scope 字符串，以及用于过滤的身份类型列表（None 表示不限身份）。
+    """
+    # 超级管理员：尊重传入 role_scope；默认 ALL
+    if getattr(current_user, "is_super_admin", False):
+        scope = (role_scope or "ALL").upper()
+        if scope in ("CC", "SS"):
+            return scope, [scope]
+        if scope in ("CC_SS",):
+            return scope, ["CC", "SS"]
+        if scope == "LP":
+            return scope, ["LP"]
+        return "ALL", None
+
+    # 非超管：忽略 role_scope，按用户身份确定
+    target_identity = None
+    if user_id:
+        target = db.query(User).filter(User.id == user_id).first()
+        target_identity = (getattr(target, "identity_type", "") or "").upper() if target else None
+    if not target_identity:
+        target_identity = (getattr(current_user, "identity_type", "") or "").upper()
+
+    if target_identity in ("CC", "SS"):
+        return target_identity, [target_identity]
+    if target_identity == "LP":
+        return "LP", ["LP"]
+
+    # 身份未知时，保守地不做身份聚合（返回空集合以避免越权聚合）
+    # 这里返回一个不会匹配任何身份的列表以确保结果为空，避免非超管看到跨身份数据。
+    return "UNKNOWN", ["__NO_MATCH__"]
 
 def _visible_tasks_query(db: Session, current_user: User, start_d: date, end_d: date, group_id: Optional[int]):
     q = db.query(Task)
@@ -2368,6 +2841,696 @@ def _compute_dataset_fingerprint(tasks: List[Task], reports: List[DailyReport], 
     s = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
+# ==================== 月度目标接口 ====================
+@app.get("/api/v1/goals/monthly", response_model=List[MonthlyGoalResponse])
+async def get_monthly_goals(
+    identity_type: Optional[str] = Query(None, description="身份类型：CC/SS"),
+    scope: Optional[str] = Query(None, description="目标作用域：global/group/user"),
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None),
+    group_id: Optional[int] = Query(None),
+    user_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    today = date.today()
+    y = year or today.year
+    m = month or today.month
+
+    q = db.query(MonthlyGoal).filter(MonthlyGoal.year == y, MonthlyGoal.month == m)
+
+    if identity_type:
+        q = q.filter(func.upper(MonthlyGoal.identity_type) == identity_type.upper())
+    if scope:
+        q = q.filter(func.lower(MonthlyGoal.scope) == scope.lower())
+    if group_id is not None:
+        q = q.filter(MonthlyGoal.group_id == group_id)
+    if user_id is not None:
+        q = q.filter(MonthlyGoal.user_id == user_id)
+
+    # 权限限制：普通用户仅能查看自己的 user 级别或所在组的 group 级别；global 仅管理员以上
+    if not (current_user.is_admin or current_user.is_super_admin):
+        # 明确禁止 global
+        q = q.filter(MonthlyGoal.scope.in_(["group", "user"]))
+
+        # 限制 group 范围
+        if group_id is not None and current_user.group_id != group_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看其他组的目标")
+        # 限制 user 范围
+        if user_id is not None and current_user.id != user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看其他用户的目标")
+
+        # 若未显式指定 scope/group/user，则默认返回本人 user 级目标
+        if scope is None and user_id is None and group_id is None:
+            q = q.filter(MonthlyGoal.scope == "user", MonthlyGoal.user_id == current_user.id)
+
+    goals = q.order_by(MonthlyGoal.scope.desc()).all()
+    return [MonthlyGoalResponse(
+        id=g.id,
+        identity_type=g.identity_type,
+        scope=g.scope,
+        year=g.year,
+        month=g.month,
+        group_id=g.group_id,
+        user_id=g.user_id,
+        amount_target=g.amount_target,
+        new_sign_target_amount=g.new_sign_target_amount,
+        referral_target_amount=g.referral_target_amount,
+        renewal_total_target_amount=g.renewal_total_target_amount,
+        renewal_target_count=g.renewal_target_count,
+        upgrade_target_count=g.upgrade_target_count,
+        notes=g.notes,
+        created_at=g.created_at,
+        updated_at=g.updated_at
+    ) for g in goals]
+
+@app.post("/api/v1/goals/monthly", response_model=MonthlyGoalResponse)
+async def upsert_monthly_goal(
+    payload: MonthlyGoalUpsertRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    # 仅管理员或超级管理员可设置目标
+    if not (current_user.is_admin or current_user.is_super_admin):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="需要管理员权限")
+
+    identity_norm = (payload.identity_type or "").upper()
+    scope_norm = (payload.scope or "").lower()
+    if scope_norm not in ("global", "group", "user"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scope 取值必须为 global/group/user")
+    if scope_norm == "group" and not payload.group_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="group 级目标必须提供 group_id")
+    if scope_norm == "user" and not payload.user_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user 级目标必须提供 user_id")
+
+    # 管理员权限限制：不可设置 global；仅能维护本组 group/user
+    if current_user.is_admin and not current_user.is_super_admin:
+        if scope_norm == "global":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="管理员不可设置 global 目标")
+        if payload.group_id is not None and payload.group_id != current_user.group_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="管理员仅能维护本组目标")
+        if payload.user_id is not None:
+            target_user = db.query(User).filter(User.id == payload.user_id).first()
+            if not target_user or target_user.group_id != current_user.group_id:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="管理员仅能维护本组用户目标")
+
+    y = int(payload.year)
+    m = int(payload.month)
+
+    q = db.query(MonthlyGoal).filter(
+        func.upper(MonthlyGoal.identity_type) == identity_norm,
+        func.lower(MonthlyGoal.scope) == scope_norm,
+        MonthlyGoal.year == y,
+        MonthlyGoal.month == m
+    )
+    if payload.group_id:
+        q = q.filter(MonthlyGoal.group_id == payload.group_id)
+    if payload.user_id:
+        q = q.filter(MonthlyGoal.user_id == payload.user_id)
+
+    existing = q.first()
+    if existing:
+        existing.amount_target = float(payload.amount_target or 0.0)
+        # 新增细分目标字段更新
+        try:
+            existing.new_sign_target_amount = float(getattr(payload, "new_sign_target_amount", 0.0) or 0.0)
+            existing.referral_target_amount = float(getattr(payload, "referral_target_amount", 0.0) or 0.0)
+            existing.renewal_total_target_amount = float(getattr(payload, "renewal_total_target_amount", 0.0) or 0.0)
+        except Exception:
+            # 兼容早期请求未携带字段
+            existing.new_sign_target_amount = existing.new_sign_target_amount or 0.0
+            existing.referral_target_amount = existing.referral_target_amount or 0.0
+            existing.renewal_total_target_amount = existing.renewal_total_target_amount or 0.0
+        existing.renewal_target_count = int(payload.renewal_target_count or 0)
+        existing.upgrade_target_count = int(payload.upgrade_target_count or 0)
+        existing.notes = payload.notes
+        db.add(existing)
+        db.commit()
+        db.refresh(existing)
+        target = existing
+    else:
+        target = MonthlyGoal(
+            identity_type=identity_norm,
+            scope=scope_norm,
+            year=y,
+            month=m,
+            group_id=payload.group_id,
+            user_id=payload.user_id,
+            amount_target=float(payload.amount_target or 0.0),
+            new_sign_target_amount=float(getattr(payload, "new_sign_target_amount", 0.0) or 0.0),
+            referral_target_amount=float(getattr(payload, "referral_target_amount", 0.0) or 0.0),
+            renewal_total_target_amount=float(getattr(payload, "renewal_total_target_amount", 0.0) or 0.0),
+            renewal_target_count=int(payload.renewal_target_count or 0),
+            upgrade_target_count=int(payload.upgrade_target_count or 0),
+            notes=payload.notes
+        )
+        db.add(target)
+        db.commit()
+        db.refresh(target)
+
+    return MonthlyGoalResponse(
+        id=target.id,
+        identity_type=target.identity_type,
+        scope=target.scope,
+        year=target.year,
+        month=target.month,
+        group_id=target.group_id,
+        user_id=target.user_id,
+        amount_target=target.amount_target,
+        new_sign_target_amount=target.new_sign_target_amount,
+        referral_target_amount=target.referral_target_amount,
+        renewal_total_target_amount=target.renewal_total_target_amount,
+        renewal_target_count=target.renewal_target_count,
+        upgrade_target_count=target.upgrade_target_count,
+        notes=target.notes,
+        created_at=target.created_at,
+        updated_at=target.updated_at
+    )
+
+# 别名路由：符合规划 /api/v1/analytics/goals/monthly
+@app.get("/api/v1/analytics/goals/monthly", response_model=List[MonthlyGoalResponse])
+async def analytics_get_monthly_goals(
+    identity_type: Optional[str] = Query(None),
+    scope: Optional[str] = Query(None),
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None),
+    group_id: Optional[int] = Query(None),
+    user_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    today = date.today()
+    y = year or today.year
+    m = month or today.month
+
+    q = db.query(MonthlyGoal).filter(MonthlyGoal.year == y, MonthlyGoal.month == m)
+
+    if identity_type:
+        q = q.filter(func.upper(MonthlyGoal.identity_type) == identity_type.upper())
+    if scope:
+        q = q.filter(func.lower(MonthlyGoal.scope) == scope.lower())
+    if group_id is not None:
+        q = q.filter(MonthlyGoal.group_id == group_id)
+    if user_id is not None:
+        q = q.filter(MonthlyGoal.user_id == user_id)
+
+    if not (current_user.is_admin or current_user.is_super_admin):
+        q = q.filter(MonthlyGoal.scope.in_(["group", "user"]))
+        if group_id is not None and current_user.group_id != group_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看其他组的目标")
+        if user_id is not None and current_user.id != user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看其他用户的目标")
+        if scope is None and user_id is None and group_id is None:
+            q = q.filter(MonthlyGoal.scope == "user", MonthlyGoal.user_id == current_user.id)
+    elif current_user.is_admin and not current_user.is_super_admin:
+        # 管理员可查本组 group/user，禁止 global
+        q = q.filter(MonthlyGoal.scope.in_(["group", "user"]))
+        admin_gid = current_user.group_id
+        if group_id is None and user_id is None:
+            q = q.filter(MonthlyGoal.group_id == admin_gid)
+        if group_id is not None and group_id != admin_gid:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="管理员不可跨组查看目标")
+        if user_id is not None:
+            target_user = db.query(User).filter(User.id == user_id).first()
+            if not target_user or target_user.group_id != admin_gid:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="管理员仅能查看本组用户目标")
+
+    goals = q.order_by(MonthlyGoal.scope.desc()).all()
+    return [MonthlyGoalResponse(
+        id=g.id,
+        identity_type=g.identity_type,
+        scope=g.scope,
+        year=g.year,
+        month=g.month,
+        group_id=g.group_id,
+        user_id=g.user_id,
+        amount_target=g.amount_target,
+        new_sign_target_amount=g.new_sign_target_amount,
+        referral_target_amount=g.referral_target_amount,
+        renewal_total_target_amount=g.renewal_total_target_amount,
+        renewal_target_count=g.renewal_target_count,
+        upgrade_target_count=g.upgrade_target_count,
+        notes=g.notes,
+        created_at=g.created_at,
+        updated_at=g.updated_at
+    ) for g in goals]
+
+@app.put("/api/v1/analytics/goals/monthly", response_model=MonthlyGoalResponse)
+async def analytics_upsert_monthly_goal(
+    payload: MonthlyGoalUpsertRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    return await upsert_monthly_goal(payload, db, current_user)
+
+# ==================== 新增：Summary 聚合（含月度目标对齐） ====================
+@app.get("/api/v1/analytics/summary")
+async def analytics_summary(
+    identity_type: str = Query(..., description="身份类型：CC/SS"),
+    scope: Optional[str] = Query(None, description="目标作用域：global/group/user（用于提示）"),
+    group_id: Optional[int] = Query(None),
+    user_id: Optional[int] = Query(None),
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    import calendar
+    today = date.today()
+    y = year or today.year
+    m = month or today.month
+    month_start = date(y, m, 1)
+    last_day = calendar.monthrange(y, m)[1]
+    month_end = date(y, m, last_day)
+
+    # 可见范围：管理员仅本组；普通用户仅自己；超管任意
+    reports_month_q = _visible_reports_query(db, current_user, month_start, month_end, group_id)
+    reports_today_q = _visible_reports_query(db, current_user, today, today, group_id)
+
+    # 身份过滤
+    identity_norm = identity_type.upper()
+    uid_pool = _get_user_ids_by_identity(db, [identity_norm], group_id)
+    if uid_pool:
+        reports_month_q = reports_month_q.filter(DailyReport.user_id.in_(uid_pool))
+        reports_today_q = reports_today_q.filter(DailyReport.user_id.in_(uid_pool))
+
+    if user_id:
+        reports_month_q = reports_month_q.filter(DailyReport.user_id == user_id)
+        reports_today_q = reports_today_q.filter(DailyReport.user_id == user_id)
+
+    month_reports = reports_month_q.all()
+    today_reports = reports_today_q.all()
+
+    def _sum_int(reports, attr: str) -> int:
+        return int(sum((getattr(r, attr, 0) or 0) for r in reports))
+    def _sum_float(reports, attr: str) -> float:
+        return float(sum((getattr(r, attr, 0.0) or 0.0) for r in reports))
+
+    # CC 指标
+    cc_month = {
+        "new_sign_count": _sum_int(month_reports, "new_sign_count"),
+        "new_sign_amount": round(_sum_float(month_reports, "new_sign_amount"), 2),
+        "referral_count": _sum_int(month_reports, "referral_count"),
+        "referral_amount": round(_sum_float(month_reports, "referral_amount"), 2)
+    }
+    cc_today = {
+        "new_sign_count": _sum_int(today_reports, "new_sign_count"),
+        "new_sign_amount": round(_sum_float(today_reports, "new_sign_amount"), 2),
+        "referral_count": _sum_int(today_reports, "referral_count"),
+        "referral_amount": round(_sum_float(today_reports, "referral_amount"), 2)
+    }
+    cc_month["actual_amount"] = round(cc_month["new_sign_amount"] + cc_month["referral_amount"], 2)
+    cc_today["actual_amount"] = round(cc_today["new_sign_amount"] + cc_today["referral_amount"], 2)
+
+    # SS 指标
+    ss_month = {
+        "renewal_count": _sum_int(month_reports, "renewal_count"),
+        "renewal_amount": round(_sum_float(month_reports, "renewal_amount"), 2),
+        "upgrade_count": _sum_int(month_reports, "upgrade_count"),
+        "upgrade_amount": round(_sum_float(month_reports, "upgrade_amount"), 2)
+    }
+    ss_today = {
+        "renewal_count": _sum_int(today_reports, "renewal_count"),
+        "renewal_amount": round(_sum_float(today_reports, "renewal_amount"), 2),
+        "upgrade_count": _sum_int(today_reports, "upgrade_count"),
+        "upgrade_amount": round(_sum_float(today_reports, "upgrade_amount"), 2)
+    }
+    ss_month["actual_amount"] = round(ss_month["renewal_amount"] + ss_month["upgrade_amount"], 2)
+    ss_today["actual_amount"] = round(ss_today["renewal_amount"] + ss_today["upgrade_amount"], 2)
+
+    # 选择目标（user > group > global）
+    monthly_goal = None
+    if identity_norm in ("CC", "SS"):
+        if user_id:
+            monthly_goal = db.query(MonthlyGoal).filter(
+                func.upper(MonthlyGoal.identity_type) == identity_norm,
+                MonthlyGoal.scope == "user",
+                MonthlyGoal.user_id == user_id,
+                MonthlyGoal.year == y,
+                MonthlyGoal.month == m
+            ).first()
+        if not monthly_goal and group_id:
+            monthly_goal = db.query(MonthlyGoal).filter(
+                func.upper(MonthlyGoal.identity_type) == identity_norm,
+                MonthlyGoal.scope == "group",
+                MonthlyGoal.group_id == group_id,
+                MonthlyGoal.year == y,
+                MonthlyGoal.month == m
+            ).first()
+        if not monthly_goal:
+            monthly_goal = db.query(MonthlyGoal).filter(
+                func.upper(MonthlyGoal.identity_type) == identity_norm,
+                MonthlyGoal.scope == "global",
+                MonthlyGoal.year == y,
+                MonthlyGoal.month == m
+            ).first()
+
+    goal_payload = None
+    amount_rate = None
+    renewal_rate = None
+    upgrade_rate = None
+    # 新增细分成就率：CC的新单与转介绍、SS的总续费
+    new_sign_achievement_rate = None
+    referral_achievement_rate = None
+    total_renewal_achievement_rate = None
+    progress_display = {
+        "amount_rate": "—",
+        "renewal_rate": "—",
+        "upgrade_rate": "—",
+        "new_sign_achievement_rate": "—",
+        "referral_achievement_rate": "—",
+        "total_renewal_achievement_rate": "—",
+    }
+    goal_status = None
+    if monthly_goal:
+        goal_payload = {
+            "identity_type": monthly_goal.identity_type,
+            "scope": monthly_goal.scope,
+            "year": monthly_goal.year,
+            "month": monthly_goal.month,
+            "amount_target": monthly_goal.amount_target,
+            # 为前端计算新增达成率提供目标字段
+            "new_sign_target_amount": getattr(monthly_goal, "new_sign_target_amount", 0.0),
+            "referral_target_amount": getattr(monthly_goal, "referral_target_amount", 0.0),
+            "renewal_total_target_amount": getattr(monthly_goal, "renewal_total_target_amount", 0.0),
+            "renewal_target_count": monthly_goal.renewal_target_count,
+            "upgrade_target_count": monthly_goal.upgrade_target_count,
+        }
+        # 金额目标达成率
+        actual_amount = cc_month["actual_amount"] if identity_norm == "CC" else ss_month["actual_amount"]
+        if (monthly_goal.amount_target or 0) > 0:
+            amount_rate = round((actual_amount / monthly_goal.amount_target) * 100.0, 2)
+            progress_display["amount_rate"] = f"{amount_rate}%"
+        else:
+            goal_status = "未设目标"
+        # 身份细分目标达成率
+        if identity_norm == "CC":
+            # 新单目标达成率
+            if (monthly_goal.new_sign_target_amount or 0) > 0:
+                try:
+                    new_sign_achievement_rate = round((cc_month["new_sign_amount"] / monthly_goal.new_sign_target_amount) * 100.0, 2)
+                    progress_display["new_sign_achievement_rate"] = f"{new_sign_achievement_rate}%"
+                except Exception:
+                    new_sign_achievement_rate = None
+            # 转介绍目标达成率
+            if (monthly_goal.referral_target_amount or 0) > 0:
+                try:
+                    referral_achievement_rate = round((cc_month["referral_amount"] / monthly_goal.referral_target_amount) * 100.0, 2)
+                    progress_display["referral_achievement_rate"] = f"{referral_achievement_rate}%"
+                except Exception:
+                    referral_achievement_rate = None
+        # SS 人数与总续费目标
+        if identity_norm == "SS":
+            if (monthly_goal.renewal_target_count or 0) > 0:
+                renewal_rate = round((ss_month["renewal_count"] / monthly_goal.renewal_target_count) * 100.0, 2)
+                progress_display["renewal_rate"] = f"{renewal_rate}%"
+            if (monthly_goal.upgrade_target_count or 0) > 0:
+                upgrade_rate = round((ss_month["upgrade_count"] / monthly_goal.upgrade_target_count) * 100.0, 2)
+                progress_display["upgrade_rate"] = f"{upgrade_rate}%"
+            # 总续费（续费+升舱）目标达成率
+            total_actual_renewal = (ss_month.get("renewal_amount", 0.0) or 0.0) + (ss_month.get("upgrade_amount", 0.0) or 0.0)
+            if (monthly_goal.renewal_total_target_amount or 0) > 0:
+                try:
+                    total_renewal_achievement_rate = round((total_actual_renewal / monthly_goal.renewal_total_target_amount) * 100.0, 2)
+                    progress_display["total_renewal_achievement_rate"] = f"{total_renewal_achievement_rate}%"
+                except Exception:
+                    total_renewal_achievement_rate = None
+    else:
+        goal_status = "未设目标"
+
+    # 根据身份返回对应结构
+    if identity_norm == "CC":
+        return {
+            "period": {"year": y, "month": m, "today": today.isoformat()},
+            "identity_type": "CC",
+            "goal": goal_payload,
+            "goal_status": goal_status,
+            "today": cc_today,
+            "month": cc_month,
+            "progress": {
+                "amount_rate": amount_rate,
+                "new_sign_achievement_rate": new_sign_achievement_rate,
+                "referral_achievement_rate": referral_achievement_rate,
+            },
+            "progress_display": {
+                "amount_rate": progress_display["amount_rate"],
+                "new_sign_achievement_rate": progress_display["new_sign_achievement_rate"],
+                "referral_achievement_rate": progress_display["referral_achievement_rate"],
+            },
+            "meta": {"group_id": group_id, "user_id": user_id}
+        }
+    else:
+        return {
+            "period": {"year": y, "month": m, "today": today.isoformat()},
+            "identity_type": "SS",
+            "goal": goal_payload,
+            "goal_status": goal_status,
+            "today": ss_today,
+            "month": ss_month,
+            "progress": {
+                "amount_rate": amount_rate,
+                "renewal_rate": renewal_rate,
+                "upgrade_rate": upgrade_rate,
+                "total_renewal_achievement_rate": total_renewal_achievement_rate,
+            },
+            "progress_display": progress_display,
+            "meta": {"group_id": group_id, "user_id": user_id}
+        }
+
+# ==================== 新增：Trend 时间序列（日报聚合） ====================
+@app.get("/api/v1/analytics/trend")
+async def analytics_trend(
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    identity_type: Optional[str] = Query(None, description="身份类型：CC/SS，可选"),
+    metrics: Optional[List[str]] = Query(None, description="指标列表：new_sign_count/new_sign_amount/referral_count/referral_amount/renewal_count/renewal_amount/upgrade_count/upgrade_amount"),
+    group_id: Optional[int] = Query(None),
+    user_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    s, e = _parse_date_range(start_date, end_date)
+    reports_q = _visible_reports_query(db, current_user, s, e, group_id)
+
+    # 身份过滤（如提供）
+    ids = None
+    if identity_type:
+        ids = _get_user_ids_by_identity(db, [identity_type.upper()], group_id)
+        if ids:
+            reports_q = reports_q.filter(DailyReport.user_id.in_(ids))
+    if user_id:
+        reports_q = reports_q.filter(DailyReport.user_id == user_id)
+
+    reports = reports_q.order_by(DailyReport.work_date.asc()).all()
+    default_metrics = [
+        "new_sign_count","new_sign_amount",
+        "referral_count","referral_amount",
+        "renewal_count","renewal_amount",
+        "upgrade_count","upgrade_amount"
+    ]
+    metrics = metrics or default_metrics
+
+    agg: Dict[str, Dict[str, Any]] = {}
+    for r in reports:
+        dstr = r.work_date.isoformat() if r.work_date else None
+        if not dstr:
+            continue
+        bucket = agg.setdefault(dstr, {k: 0 for k in metrics})
+        for k in metrics:
+            val = getattr(r, k, 0)
+            bucket[k] += val or 0
+
+    series = []
+    for dstr in sorted(agg.keys()):
+        entry = {"date": dstr}
+        for k in metrics:
+            v = agg[dstr][k]
+            # 金额类保留两位
+            if k.endswith("_amount"):
+                entry[k] = round(float(v), 2)
+            else:
+                entry[k] = int(v)
+        series.append(entry)
+
+    return {
+        "period": {"start": s.isoformat(), "end": e.isoformat()},
+        "identity_type": identity_type,
+        "metrics": metrics,
+        "series": series,
+        "meta": {"group_id": group_id, "user_id": user_id, "days": len(series)}
+    }
+# =============== 新增：统一 Analytics 数据接口（含角色视角） ===============
+@app.get("/api/v1/analytics/data")
+async def analytics_data(
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    role_scope: Optional[str] = Query(None, description="视角：CC / SS / LP / ALL（兼容 CC_SS）"),
+    group_id: Optional[int] = Query(None),
+    user_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """返回前端聚合指标与兼容旧版统计卡。
+    - role_scope: CC_SS / LP / ALL
+    - group_id: 管理员/超管可选，限定组范围
+    """
+    s, e = _parse_date_range(start_date, end_date)
+    tasks_q = _visible_tasks_query(db, current_user, s, e, group_id)
+    reports_q = _visible_reports_query(db, current_user, s, e, group_id)
+
+    # 根据视角与权限确定数据集（个人 vs 团队/全体）
+    # 普通用户默认仅个人数据；管理员/超管按 group_id 或全体可见范围
+    def _personal_task_query(q: Any) -> Any:
+        return q.filter(or_(Task.assigned_to == current_user.id, Task.created_by == current_user.id))
+
+    def _personal_report_query(q: Any) -> Any:
+        return q.filter(DailyReport.user_id == current_user.id)
+
+    scope, identity_types = _resolve_scope_and_identities(db, current_user, role_scope, user_id, group_id)
+
+    # 个人视角仅在非管理员且未指定 group_id 时应用
+    if not (getattr(current_user, "is_admin", False) or getattr(current_user, "is_super_admin", False)) and not group_id:
+        tasks_q_scoped = _personal_task_query(tasks_q)
+        reports_q_scoped = _personal_report_query(reports_q)
+    else:
+        tasks_q_scoped = tasks_q
+        reports_q_scoped = reports_q
+
+    # 身份过滤（CC/SS/LP）与单用户过滤
+    if identity_types:
+        # 对非超管，忽略 group_id 限制；管理员可按组限制
+        ids = _get_user_ids_by_identity(db, identity_types, group_id if (getattr(current_user, "is_admin", False) or getattr(current_user, "is_super_admin", False)) else None)
+        if ids:
+            tasks_q_scoped = tasks_q_scoped.filter(or_(Task.assigned_to.in_(ids), Task.created_by.in_(ids)))
+            reports_q_scoped = reports_q_scoped.filter(DailyReport.user_id.in_(ids))
+        else:
+            # 无匹配用户时，直接返回空数据集
+            tasks_q_scoped = tasks_q_scoped.filter(Task.id == -1)
+            reports_q_scoped = reports_q_scoped.filter(DailyReport.id == -1)
+
+    if user_id:
+        tasks_q_scoped = tasks_q_scoped.filter(or_(Task.assigned_to == user_id, Task.created_by == user_id))
+        reports_q_scoped = reports_q_scoped.filter(DailyReport.user_id == user_id)
+
+    tasks = tasks_q_scoped.all()
+    reports = reports_q_scoped.all()
+
+    # 通用统计卡（兼容旧接口）
+    total_tasks = len(tasks)
+    completed_tasks = sum(1 for t in tasks if (t.status == TaskStatus.DONE or (isinstance(t.status, str) and t.status == "done")))
+    completion_rate = round((completed_tasks / total_tasks * 100) if total_tasks else 0, 1)
+    total_reports = len(reports)
+    avg_emotion = round((sum((r.mood_score or 0) for r in reports) / total_reports) if total_reports else 0, 2)
+
+    # 期间天数与提交天数
+    total_days = (e - s).days + 1
+    submitted_days = len({r.work_date for r in reports}) if reports else 0
+    report_submission_rate = round((submitted_days / total_days * 100) if total_days else 0, 1)
+
+    # 指标计算工具
+    amount_tasks = [t for t in tasks if (getattr(t.task_type, 'value', str(t.task_type)) == 'amount')]
+    quantity_tasks = [t for t in tasks if (getattr(t.task_type, 'value', str(t.task_type)) == 'quantity')]
+    checkbox_tasks = [t for t in tasks if (getattr(t.task_type, 'value', str(t.task_type)) == 'checkbox')]
+
+    sales_target = float(sum(t.target_amount or 0 for t in amount_tasks))
+    # 使用日报的实际业务数据作为实际业绩
+    sales_actual = float(sum(getattr(r, 'new_sign_amount', 0.0) or 0.0 for r in reports))
+    sales_ach_rate = round((sales_actual / sales_target * 100) if sales_target else 0, 2)
+    deal_count = int(sum(getattr(r, 'new_sign_count', 0) or 0 for r in reports))
+    renewal_count_total = int(sum(getattr(r, 'renewal_count', 0) or 0 for r in reports))
+    upgrade_count_total = int(sum(getattr(r, 'upgrade_count', 0) or 0 for r in reports))
+
+    call_count_total = int(sum(getattr(r, 'call_count', 0) or 0 for r in reports))
+    call_duration_total = float(sum(getattr(r, 'call_duration', 0.0) or 0.0 for r in reports))
+    followup_feedback = sum(1 for r in reports if (getattr(r, 'task_progress', None) or getattr(r, 'work_summary', None)))
+
+    # LP 视角相关（用现有字段近似）
+    satisfaction_avg = round((sum((getattr(r, 'mood_score', 0) or 0) for r in reports) / total_reports) if total_reports else 0, 2)
+    lp_service_coverage = report_submission_rate
+
+    # ALL 视角相关
+    # AI 使用统计
+    start_dt = datetime.combine(s, datetime.min.time())
+    end_dt = datetime.combine(e, datetime.max.time())
+    ai_total_calls = db.query(AICallLog).filter(AICallLog.created_at >= start_dt, AICallLog.created_at <= end_dt).count()
+
+    metrics_payload: Dict[str, Any] = {}
+    if scope in ("CC", "SS", "CC_SS"):
+        metrics_payload = {
+            "task_completion_rate": completion_rate,
+            "sales_target": round(sales_target, 2),
+            "sales_actual": round(sales_actual, 2),
+            "sales_achievement_rate": sales_ach_rate,
+            "touch_count": call_count_total,
+            "touch_coverage": report_submission_rate,
+            "referral_count": 0,  # 数据暂缺
+            "report_submission_rate": report_submission_rate,
+            "call_count": call_count_total,
+            "call_duration": round(call_duration_total, 1),
+            "deal_count": deal_count,
+            "followup_feedback": followup_feedback,
+            # 新增业务指标
+            "renewal_count": renewal_count_total,
+            "upgrade_count": upgrade_count_total,
+        }
+    elif scope == "LP":
+        metrics_payload = {
+            "service_count": call_count_total,
+            "service_touch_rate": report_submission_rate,
+            "satisfaction_score": satisfaction_avg,  # 以 mood_score 近似
+            "iur_completion_rate": None,  # 数据暂缺
+            "complaint_count": None,      # 数据暂缺
+            "followup_quality": None,     # 数据暂缺
+        }
+    else:  # ALL 或非识别/未知（统一走汇总视角，以当前可见范围为准）
+        # 汇总视角采用全局/当前权限可见汇总数据
+        total_sales_all = sales_actual
+        avg_task_completion = completion_rate
+        overall_satisfaction = round(avg_emotion / 10.0, 2)  # 0-1 区间（近似）
+        metrics_payload = {
+            "total_sales_all": round(total_sales_all, 2),
+            "avg_sales_achievement": sales_ach_rate,
+            "avg_task_completion": avg_task_completion,
+            # 统一前端键名别名：与 CC/SS 视角保持一致
+            "task_completion_rate": avg_task_completion,
+            "customer_growth_rate": None,  # 暂缺
+            "lp_service_coverage": lp_service_coverage,
+            # 统一前端键名别名：报告提交率
+            "report_submission_rate": lp_service_coverage,
+            "renewal_rate_total": None,    # 暂缺
+            "referral_growth": None,       # 暂缺
+            "overall_satisfaction": overall_satisfaction,
+            "team_gap_rate": None,         # 暂缺
+            "ai_usage_total": ai_total_calls,
+            # 新增业务指标
+            "renewal_count_total": renewal_count_total,
+            "upgrade_count_total": upgrade_count_total,
+        }
+
+    return {
+        "metrics": metrics_payload,
+        "stats": {
+            "totalTasks": total_tasks,
+            "completedTasks": completed_tasks,
+            "completionRate": completion_rate,
+            "totalReports": total_reports,
+            "avgEmotionScore": avg_emotion,
+        }
+    }
+
+# 兼容前端旧路径（无版本前缀）
+@app.get("/analytics/data")
+async def analytics_data_alias(
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    role_scope: Optional[str] = Query(None),
+    group_id: Optional[int] = Query(None),
+    user_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    return await analytics_data(start_date, end_date, role_scope, group_id, user_id, db, current_user)
+
 @app.get("/api/v1/analytics/stats")
 async def analytics_stats(
     start_date: Optional[str] = Query(None),
@@ -2410,7 +3573,9 @@ async def analytics_stats_alias(
 async def analytics_charts(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
+    role_scope: Optional[str] = Query(None),
     group_id: Optional[int] = Query(None),
+    user_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -2418,6 +3583,21 @@ async def analytics_charts(
     s, e = _parse_date_range(start_date, end_date)
     tasks_q = _visible_tasks_query(db, current_user, s, e, group_id)
     reports_q = _visible_reports_query(db, current_user, s, e, group_id)
+    # 身份与单用户过滤（仅超管可指定 role_scope）
+    scope, identity_types = _resolve_scope_and_identities(db, current_user, role_scope, user_id, group_id)
+
+    if identity_types:
+        ids = _get_user_ids_by_identity(db, identity_types, group_id if (getattr(current_user, "is_admin", False) or getattr(current_user, "is_super_admin", False)) else None)
+        if ids:
+            tasks_q = tasks_q.filter(or_(Task.assigned_to.in_(ids), Task.created_by.in_(ids)))
+            reports_q = reports_q.filter(DailyReport.user_id.in_(ids))
+        else:
+            tasks_q = tasks_q.filter(Task.id == -1)
+            reports_q = reports_q.filter(DailyReport.id == -1)
+
+    if user_id:
+        tasks_q = tasks_q.filter(or_(Task.assigned_to == user_id, Task.created_by == user_id))
+        reports_q = reports_q.filter(DailyReport.user_id == user_id)
     # 任务趋势（每日已完成数与新增数）
     date_cursor = s
     trend = []
@@ -2493,16 +3673,19 @@ async def analytics_charts(
 async def analytics_charts_alias(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
+    role_scope: Optional[str] = Query(None),
     group_id: Optional[int] = Query(None),
+    user_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    return await analytics_charts(start_date, end_date, group_id, db, current_user)
+    return await analytics_charts(start_date, end_date, role_scope, group_id, user_id, db, current_user)
 
 @app.get("/api/v1/analytics/user-performance")
 async def analytics_user_performance(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
+    role_scope: Optional[str] = Query(None),
     group_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
@@ -2514,9 +3697,29 @@ async def analytics_user_performance(
     # 选取用户范围
     if group_id:
         user_ids = _get_group_user_ids(db, group_id)
-        users = db.query(User).filter(User.id.in_(user_ids)).all() if user_ids else []
+        base_q = db.query(User).filter(User.id.in_(user_ids)) if user_ids else db.query(User).filter(User.id == -1)
     else:
-        users = db.query(User).all() if current_user.is_super_admin else db.query(User).filter(User.group_id == current_user.group_id).all()
+        base_q = db.query(User) if current_user.is_super_admin else db.query(User).filter(User.group_id == current_user.group_id)
+
+    # 按视角身份过滤：仅超管可自由选择；管理员固定为自身身份
+    if current_user.is_super_admin:
+        scope = (role_scope or "ALL").upper()
+        if scope in ("CC", "SS"):
+            identity_types = [scope]
+        elif scope == "CC_SS":
+            identity_types = ["CC", "SS"]
+        elif scope == "LP":
+            identity_types = ["LP"]
+        else:
+            identity_types = None
+    else:
+        idt = (getattr(current_user, "identity_type", "") or "").upper()
+        identity_types = [idt] if idt in ("CC", "SS", "LP") else ["__NO_MATCH__"]
+
+    if identity_types:
+        base_q = base_q.filter(func.upper(User.identity_type).in_([t.upper() for t in identity_types]))
+
+    users = base_q.all()
     results = []
     for u in users:
         t_q = _visible_tasks_query(db, u if u.is_admin else current_user, s, e, group_id)
@@ -2547,24 +3750,299 @@ async def analytics_user_performance(
 async def analytics_user_performance_alias(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
+    role_scope: Optional[str] = Query(None),
     group_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    return await analytics_user_performance(start_date, end_date, group_id, db, current_user)
+    return await analytics_user_performance(start_date, end_date, role_scope, group_id, db, current_user)
+
+@app.get("/api/v1/analytics/ranking")
+async def analytics_ranking(
+    metric_key: Optional[str] = Query(None, description="排名指标键"),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    role_scope: Optional[str] = Query(None),
+    group_id: Optional[int] = Query(None),
+    user_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    if not metric_key:
+        return {"top_10": [], "current_user_rank": None}
+
+    s, e = _parse_date_range(start_date, end_date)
+    tasks_q = _visible_tasks_query(db, current_user, s, e, group_id)
+    reports_q = _visible_reports_query(db, current_user, s, e, group_id)
+
+    scope, identity_types = _resolve_scope_and_identities(db, current_user, role_scope, user_id, group_id)
+
+    # 针对不同指标限定适用的身份类型，避免与指标不关联的用户出现在榜单
+    metric_identity_map = {
+        # 通用（所有身份）：任务完成率、日报提交率
+        "task_completion_rate": None,
+        "report_submission_rate": None,
+        # 销售总额：CC+SS 都参与
+        "period_sales_amount": ["CC", "SS"],
+        # 仅 CC 相关的指标
+        "period_new_sign_amount": ["CC"],
+        "new_sign_count": ["CC"],
+        "period_referral_amount": ["CC"],
+        "referral_count": ["CC"],
+        "sales_achievement_rate": ["CC"],
+        "new_sign_achievement_rate": ["CC"],
+        "referral_achievement_rate": ["CC"],
+        # 仅 SS 相关的指标
+        "period_total_renewal_amount": ["SS"],
+        "period_upgrade_amount": ["SS"],
+        "upgrade_count": ["SS"],
+        "total_renewal_achievement_rate": ["SS"],
+        "upgrade_rate": ["SS"],
+    }
+    supported_identities = metric_identity_map.get(metric_key)
+    if supported_identities is not None:
+        # 若上游未限定身份（ALL 场景），则以指标适配身份为准；否则取交集
+        if identity_types is None:
+            identity_types = supported_identities
+        else:
+            identity_types = [t for t in identity_types if t.upper() in {s.upper() for s in supported_identities}]
+
+    def _users_for_ranking() -> List[User]:
+        base_q = db.query(User)
+        if current_user.is_super_admin:
+            if group_id:
+                base_q = base_q.filter(User.group_id == group_id)
+        elif current_user.is_admin:
+            grp = group_id or current_user.group_id
+            if grp:
+                base_q = base_q.filter(User.group_id == grp)
+        else:
+            base_q = base_q.filter(User.id == current_user.id)
+
+        if identity_types:
+            base_q = base_q.filter(func.upper(User.identity_type).in_([t.upper() for t in identity_types]))
+        if user_id:
+            base_q = base_q.filter(User.id == user_id)
+        return base_q.all()
+
+    users = _users_for_ranking()
+
+    # 单用户指标计算
+    def _metric_for_user(u: User) -> (float, Optional[str]):
+        uq = tasks_q.filter(or_(Task.assigned_to == u.id, Task.created_by == u.id))
+        rq = reports_q.filter(DailyReport.user_id == u.id)
+        # 目标按“月度目标”获取：优先个人，其次组，最后全局
+        def _get_user_monthly_goal(identity: str, y: int, m: int) -> Optional[MonthlyGoal]:
+            identity_norm = (identity or "").upper()
+            # personal
+            g = db.query(MonthlyGoal).filter(
+                func.upper(MonthlyGoal.identity_type) == identity_norm,
+                MonthlyGoal.scope == "user",
+                MonthlyGoal.user_id == u.id,
+                MonthlyGoal.year == y,
+                MonthlyGoal.month == m
+            ).first()
+            if g:
+                return g
+            # group
+            if getattr(u, "group_id", None):
+                g = db.query(MonthlyGoal).filter(
+                    func.upper(MonthlyGoal.identity_type) == identity_norm,
+                    MonthlyGoal.scope == "group",
+                    MonthlyGoal.group_id == u.group_id,
+                    MonthlyGoal.year == y,
+                    MonthlyGoal.month == m
+                ).first()
+                if g:
+                    return g
+            # global
+            g = db.query(MonthlyGoal).filter(
+                func.upper(MonthlyGoal.identity_type) == identity_norm,
+                MonthlyGoal.scope == "global",
+                MonthlyGoal.year == y,
+                MonthlyGoal.month == m
+            ).first()
+            return g
+
+        y, m = e.year, e.month
+
+        if metric_key == "task_completion_rate":
+            total_tasks = uq.count()
+            completed_tasks = uq.filter(
+                or_(Task.status == TaskStatus.DONE, (isinstance(Task.status, str) and Task.status == "done"))
+            ).count()
+            val = (completed_tasks / total_tasks * 100.0) if total_tasks else 0.0
+            return round(val, 1), f"{round(val, 1)}%"
+
+        if metric_key == "report_submission_rate":
+            total_days = (e - s).days + 1
+            submitted_days = rq.with_entities(DailyReport.work_date).distinct().count()
+            val = (submitted_days / total_days * 100.0) if total_days else 0.0
+            return round(val, 1), f"{round(val, 1)}%"
+
+        if metric_key == "sales_achievement_rate":
+            # 目标取金额型任务的目标之和
+            amount_tasks = uq.filter(or_(Task.task_type == TaskType.amount, (isinstance(Task.task_type, str) and Task.task_type == "amount")))
+            target_sum = sum((t.target_amount or 0.0) for t in amount_tasks.all())
+            # 实际取日报中的新单金额
+            sales_actual = float(rq.with_entities(func.sum(DailyReport.new_sign_amount)).scalar() or 0.0)
+            if target_sum <= 0:
+                return None, None  # 无目标则视为不参与该指标排名
+            val = (sales_actual / target_sum * 100.0)
+            return round(val, 2), f"{round(val, 2)}%"
+
+        # 期间金额聚合（ALL 视角近似：新单+转介绍+续费+升舱）
+        if metric_key == "period_sales_amount":
+            new_sign = float(rq.with_entities(func.sum(DailyReport.new_sign_amount)).scalar() or 0.0)
+            referral = float(rq.with_entities(func.sum(DailyReport.referral_amount)).scalar() or 0.0)
+            renewal = float(rq.with_entities(func.sum(DailyReport.renewal_amount)).scalar() or 0.0)
+            upgrade = float(rq.with_entities(func.sum(DailyReport.upgrade_amount)).scalar() or 0.0)
+            val = new_sign + referral + renewal + upgrade
+            return round(val, 2), None
+
+        if metric_key == "period_new_sign_amount":
+            val = float(rq.with_entities(func.sum(DailyReport.new_sign_amount)).scalar() or 0.0)
+            return round(val, 2), None
+
+        if metric_key == "new_sign_count":
+            val = int(rq.with_entities(func.sum(DailyReport.new_sign_count)).scalar() or 0)
+            return val, None
+
+        if metric_key == "period_referral_amount":
+            val = float(rq.with_entities(func.sum(DailyReport.referral_amount)).scalar() or 0.0)
+            return round(val, 2), None
+
+        if metric_key == "referral_count":
+            val = int(rq.with_entities(func.sum(DailyReport.referral_count)).scalar() or 0)
+            return val, None
+
+        if metric_key == "period_total_renewal_amount":
+            renewal = float(rq.with_entities(func.sum(DailyReport.renewal_amount)).scalar() or 0.0)
+            upgrade = float(rq.with_entities(func.sum(DailyReport.upgrade_amount)).scalar() or 0.0)
+            val = renewal + upgrade
+            return round(val, 2), None
+
+        if metric_key == "period_upgrade_amount":
+            val = float(rq.with_entities(func.sum(DailyReport.upgrade_amount)).scalar() or 0.0)
+            return round(val, 2), None
+
+        if metric_key == "upgrade_count":
+            val = int(rq.with_entities(func.sum(DailyReport.upgrade_count)).scalar() or 0)
+            return val, None
+
+        # 目标达成类（仅在存在目标时参与排名）
+        if metric_key == "new_sign_achievement_rate":
+            goal = _get_user_monthly_goal("CC", y, m)
+            target = float(getattr(goal, "new_sign_target_amount", 0.0) or 0.0)
+            if target <= 0:
+                return None, None
+            actual = float(rq.with_entities(func.sum(DailyReport.new_sign_amount)).scalar() or 0.0)
+            val = (actual / target * 100.0)
+            return round(val, 2), f"{round(val, 2)}%"
+
+        if metric_key == "referral_achievement_rate":
+            goal = _get_user_monthly_goal("CC", y, m)
+            target = float(getattr(goal, "referral_target_amount", 0.0) or 0.0)
+            if target <= 0:
+                return None, None
+            actual = float(rq.with_entities(func.sum(DailyReport.referral_amount)).scalar() or 0.0)
+            val = (actual / target * 100.0)
+            return round(val, 2), f"{round(val, 2)}%"
+
+        if metric_key == "total_renewal_achievement_rate":
+            goal = _get_user_monthly_goal("SS", y, m)
+            target = float(getattr(goal, "renewal_total_target_amount", 0.0) or 0.0)
+            if target <= 0:
+                return None, None
+            renewal = float(rq.with_entities(func.sum(DailyReport.renewal_amount)).scalar() or 0.0)
+            upgrade = float(rq.with_entities(func.sum(DailyReport.upgrade_amount)).scalar() or 0.0)
+            actual = renewal + upgrade
+            val = (actual / target * 100.0)
+            return round(val, 2), f"{round(val, 2)}%"
+
+        if metric_key == "upgrade_rate":
+            goal = _get_user_monthly_goal("SS", y, m)
+            target_cnt = int(getattr(goal, "upgrade_target_count", 0) or 0)
+            if target_cnt <= 0:
+                return None, None
+            up_cnt = int(rq.with_entities(func.sum(DailyReport.upgrade_count)).scalar() or 0)
+            val = (up_cnt / target_cnt * 100.0)
+            return round(val, 2), f"{round(val, 2)}%"
+
+        # 未识别指标时返回 0
+        return 0.0, None
+
+    rows = []
+    for u in users:
+        value, formatted = _metric_for_user(u)
+        # 目标型指标在无目标时返回 None，直接跳过该用户
+        if value is None:
+            continue
+        rows.append({
+            "user_id": u.id,
+            "name": u.username,
+            "avatar": None,
+            "value": value,
+            "formatted_value": formatted,
+        })
+
+    # 排序与排名
+    rows.sort(key=lambda x: (x["value"] if isinstance(x["value"], (int, float)) else -1), reverse=True)
+    for idx, r in enumerate(rows, start=1):
+        r["rank"] = idx
+
+    top_10 = rows[:10]
+    current_user_rank = next((r for r in rows if r.get("user_id") == current_user.id), None)
+
+    return {"top_10": top_10, "current_user_rank": current_user_rank}
+
+# 兼容前端旧路径（无版本前缀）
+@app.get("/analytics/ranking")
+async def analytics_ranking_alias(
+    metric_key: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    role_scope: Optional[str] = Query(None),
+    group_id: Optional[int] = Query(None),
+    user_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    return await analytics_ranking(metric_key, start_date, end_date, role_scope, group_id, user_id, db, current_user)
 
 @app.get("/api/v1/analytics/ai-insights")
 async def analytics_ai_insights(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
+    role_scope: Optional[str] = Query(None),
     group_id: Optional[int] = Query(None),
+    user_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
     """AI洞察：基于权限与筛选的数据集进行分析，并结果留存与复用"""
     s, e = _parse_date_range(start_date, end_date)
-    tasks = _visible_tasks_query(db, current_user, s, e, group_id).all()
-    reports = _visible_reports_query(db, current_user, s, e, group_id).all()
+    tasks_q = _visible_tasks_query(db, current_user, s, e, group_id)
+    reports_q = _visible_reports_query(db, current_user, s, e, group_id)
+
+    # 身份与单用户过滤（仅超管可指定 role_scope）
+    scope, identity_types = _resolve_scope_and_identities(db, current_user, role_scope, user_id, group_id)
+
+    if identity_types:
+        ids = _get_user_ids_by_identity(db, identity_types, group_id if (getattr(current_user, "is_admin", False) or getattr(current_user, "is_super_admin", False)) else None)
+        if ids:
+            tasks_q = tasks_q.filter(or_(Task.assigned_to.in_(ids), Task.created_by.in_(ids)))
+            reports_q = reports_q.filter(DailyReport.user_id.in_(ids))
+        else:
+            tasks_q = tasks_q.filter(Task.id == -1)
+            reports_q = reports_q.filter(DailyReport.id == -1)
+
+    if user_id:
+        tasks_q = tasks_q.filter(or_(Task.assigned_to == user_id, Task.created_by == user_id))
+        reports_q = reports_q.filter(DailyReport.user_id == user_id)
+
+    tasks = tasks_q.all()
+    reports = reports_q.all()
 
     # 构造范围参数用于指纹/复用
     scope_params = {
@@ -2573,11 +4051,32 @@ async def analytics_ai_insights(
         "group_id": group_id,
         "viewer_id": current_user.id,
         "role": current_user.role,
+        "role_scope": scope,
+        "user_id": user_id,
     }
     fingerprint = _compute_dataset_fingerprint(tasks, reports, scope_params)
 
-    # 选择活跃的AI功能（优先 CUSTOM 作为数据洞察）
-    ai_function = db.query(AIFunction).filter(AIFunction.is_active == True).order_by(AIFunction.created_at.desc()).first()
+    # 选择活跃的AI功能：根据视角（个人/团队）优先使用对应功能
+    ai_function = None
+    try:
+        team_scope = bool(group_id) or (scope and scope.lower() in ["team", "group"])
+        if team_scope:
+            # 团队数据洞察优先匹配中文名称或英文别名
+            ai_function = db.query(AIFunction).filter(
+                AIFunction.is_active == True,
+                or_(AIFunction.name == "团队数据洞察", AIFunction.name == "team_insight")
+            ).first()
+        else:
+            # 个人数据洞察优先匹配中文名称或英文别名
+            ai_function = db.query(AIFunction).filter(
+                AIFunction.is_active == True,
+                or_(AIFunction.name == "个人数据洞察", AIFunction.name == "personal_insight")
+            ).first()
+    except Exception:
+        ai_function = None
+    # 若未找到特定功能，回退到最近的活跃功能
+    if not ai_function:
+        ai_function = db.query(AIFunction).filter(AIFunction.is_active == True).order_by(AIFunction.created_at.desc()).first()
 
     # 查找可复用的调用记录
     reused_response = None
@@ -2681,11 +4180,141 @@ async def analytics_ai_insights(
 async def analytics_ai_insights_alias(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
+    role_scope: Optional[str] = Query(None),
     group_id: Optional[int] = Query(None),
+    user_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    return await analytics_ai_insights(start_date, end_date, group_id, db, current_user)
+    return await analytics_ai_insights(start_date, end_date, role_scope, group_id, user_id, db, current_user)
+
+# =============== 新增：AI 总结报告（POST） ===============
+@app.post("/api/v1/analytics/ai-insight-summary")
+async def analytics_ai_insight_summary(
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """根据当前视角与时间范围生成总结报告（轻量实现，便于前端联动）。"""
+    start_date = payload.get("start_date")
+    end_date = payload.get("end_date")
+    role_scope = payload.get("role_scope")
+    group_id = payload.get("group_id")
+    user_id = payload.get("user_id")
+
+    s, e = _parse_date_range(start_date, end_date)
+    # 复用数据接口的核心计算
+    data = await analytics_data(start_date, end_date, role_scope, group_id, user_id, db, current_user)
+    metrics = data.get("metrics", {})
+    stats = data.get("stats", {})
+
+    # 生成轻量总结（启发式文本）
+    comp = stats.get("completionRate", 0)
+    avg_emotion_score = stats.get("avgEmotionScore", 0)
+    sales_actual = metrics.get("sales_actual")
+    sales_target = metrics.get("sales_target")
+    ach_rate = metrics.get("sales_achievement_rate")
+
+    lines = []
+    if sales_actual is not None and sales_target is not None:
+        lines.append(f"销售达成率 {ach_rate or 0}%（实际 {round(sales_actual or 0, 2)}/{round(sales_target or 0, 2)}）")
+    lines.append(f"任务完成率 {comp}%，日报提交覆盖 {metrics.get('report_submission_rate', 0)}%")
+    # 情绪分作为满意度近似（0-10）
+    lines.append(f"平均情感分 {avg_emotion_score}（十分制）")
+    summary_text = "；".join(lines)
+
+    suggestions = []
+    if comp < 60:
+        suggestions.append("提升任务执行力：明确优先级，设置短周期检查点")
+    if (ach_rate or 0) < 70 and (sales_target or 0) > 0:
+        suggestions.append("优化销售策略：针对转介绍与复购制定专项活动")
+    if avg_emotion_score < 5:
+        suggestions.append("关注员工情绪与支持：加强团队互助与激励机制")
+    if not suggestions:
+        suggestions.append("保持良好趋势：延续当前策略并关注异常波动")
+
+    # 写入 AI 调用日志（模拟）
+    start_dt = datetime.combine(s, datetime.min.time())
+    end_dt = datetime.combine(e, datetime.max.time())
+    ai_function = db.query(AIFunction).filter(AIFunction.is_active == True).order_by(AIFunction.created_at.desc()).first()
+    if ai_function:
+        call_log = AICallLog(
+            function_id=ai_function.id,
+            agent_id=ai_function.agent_id,
+            user_id=current_user.id,
+            request_data={
+                "type": "analytics_summary",
+                "start_date": start_dt.isoformat(),
+                "end_date": end_dt.isoformat(),
+                "role_scope": role_scope,
+                "group_id": group_id,
+            },
+            status=CallStatus.SUCCESS,
+            duration_ms=0,
+            response_data={
+                "summary": summary_text,
+                "suggestions": suggestions,
+            },
+        )
+        db.add(call_log)
+        db.commit()
+
+    return {"summary": summary_text, "suggestions": suggestions}
+
+# 兼容前端旧路径（无版本前缀）
+@app.post("/analytics/ai-insight-summary")
+async def analytics_ai_insight_summary_alias(
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    return await analytics_ai_insight_summary(payload, db, current_user)
+
+# =============== 新增：指标 Schema（可选） ===============
+@app.get("/api/v1/analytics/schema")
+async def analytics_schema():
+    """返回固定指标 Schema（前端也可内置，此接口为后端对齐）。"""
+    return {
+        "CC_SS": [
+            {"key": "task_completion_rate", "label": "任务完成率", "unit": "%"},
+            {"key": "sales_target", "label": "销售目标金额", "unit": "USD"},
+            {"key": "sales_actual", "label": "实际销售金额", "unit": "USD"},
+            {"key": "sales_achievement_rate", "label": "销售目标达成率", "unit": "%"},
+            {"key": "touch_count", "label": "服务次数", "unit": "次"},
+            {"key": "touch_coverage", "label": "服务覆盖率", "unit": "%"},
+            {"key": "referral_count", "label": "转介绍数量", "unit": "个"},
+            {"key": "report_submission_rate", "label": "日报提交率", "unit": "%"},
+            {"key": "call_count", "label": "通次", "unit": "次"},
+            {"key": "call_duration", "label": "通时", "unit": "分钟"},
+            {"key": "deal_count", "label": "谈单量", "unit": "单"},
+            {"key": "followup_feedback", "label": "跟进反馈次数", "unit": "条"},
+        ],
+        "LP": [
+            {"key": "service_count", "label": "服务次数", "unit": "次"},
+            {"key": "service_touch_rate", "label": "服务触达率", "unit": "%"},
+            {"key": "satisfaction_score", "label": "满意度", "unit": "分"},
+            {"key": "iur_completion_rate", "label": "IUR 完成率", "unit": "%"},
+            {"key": "complaint_count", "label": "投诉数量", "unit": "起"},
+            {"key": "followup_quality", "label": "跟进质量评分", "unit": "分"},
+        ],
+        "ALL": [
+            {"key": "total_sales_all", "label": "公司总销售额", "unit": "USD"},
+            {"key": "avg_sales_achievement", "label": "销售目标平均达成率", "unit": "%"},
+            {"key": "avg_task_completion", "label": "任务平均完成率", "unit": "%"},
+            {"key": "customer_growth_rate", "label": "客户增长率", "unit": "%"},
+            {"key": "lp_service_coverage", "label": "LP服务覆盖率", "unit": "%"},
+            {"key": "renewal_rate_total", "label": "整体续费率", "unit": "%"},
+            {"key": "referral_growth", "label": "转介绍增长率", "unit": "%"},
+            {"key": "overall_satisfaction", "label": "整体满意度", "unit": "分"},
+            {"key": "team_gap_rate", "label": "低绩效团队占比", "unit": "%"},
+            {"key": "ai_usage_total", "label": "AI 功能使用次数", "unit": "次"},
+        ],
+    }
+
+# 兼容前端旧路径（无版本前缀）
+@app.get("/analytics/schema")
+async def analytics_schema_alias():
+    return await analytics_schema()
 
 @app.get("/api/v1/admin/metrics")
 async def get_admin_metrics(
@@ -2703,38 +4332,15 @@ async def get_admin_metrics(
         )
     
     try:
-        # 模拟指标数据
-        metrics = [
-            {
-                "id": 1,
-                "name": "用户活跃率",
-                "description": "用户日常使用情况",
-                "value": 85.5,
-                "unit": "%",
-                "frequency": "daily",
-                "status": "active",
-                "created_at": datetime.now().isoformat()
-            },
-            {
-                "id": 2,
-                "name": "任务完成率",
-                "description": "任务按时完成的比率",
-                "value": 92.3,
-                "unit": "%",
-                "frequency": "weekly",
-                "status": "active",
-                "created_at": datetime.now().isoformat()
-            }
-        ]
-        
-        # 分页
-        start = (page - 1) * size
-        end = start + size
-        items = metrics[start:end]
-        
+        # 读取数据库中的指标
+        from .models import AdminMetric
+        q = db.query(AdminMetric).order_by(AdminMetric.created_at.desc())
+        total = q.count()
+        items = [m.to_dict() for m in q.offset((page - 1) * size).limit(size).all()]
+        # 若无数据，返回空列表（也可在此处进行默认种子数据的插入）
         return {
             "items": items,
-            "total": len(metrics),
+            "total": total,
             "page": page,
             "size": size
         }
@@ -3097,8 +4703,9 @@ async def get_ai_stats(
             AICallLog.created_at >= today
         ).count()
         
-        # 计算成功率
+        # 计算成功率（百分比，保留两位小数）
         success_rate = (success_calls / total_calls * 100) if total_calls > 0 else 0.0
+        success_rate = round(success_rate, 2)
         
         # 计算平均响应时间
         avg_duration = db.query(func.avg(AICallLog.duration_ms)).scalar() or 0.0
@@ -3243,6 +4850,222 @@ async def get_system_settings(
     
     return system_settings
 
+# ==================== AI 浮动球：系统知识与聊天 ====================
+
+@app.get("/api/v1/ai/system-knowledge", response_model=AISystemKnowledgeResponse)
+async def get_ai_system_knowledge(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """提供系统向导的欢迎语与推荐问题（基于用户身份类型定制）"""
+    try:
+        branch = current_user.get_ai_knowledge_branch()
+        welcome = f"你好，{current_user.username}！我是系统向导，帮你快速找到功能入口。"
+        recommended = [
+            "如何查看我的任务进度？",
+            "如何提交当天的日报？",
+            "哪里可以设置月度目标？",
+        ]
+        if branch == "ANALYTICS":
+            recommended = [
+                "如何查看销售趋势与转介绍？",
+                "在哪里设置月度目标？",
+                "如何查看我的任务完成率？",
+            ]
+        elif branch == "SS":
+            recommended = [
+                "如何查看续费与升级数据？",
+                "如何管理班级与学员进度？",
+                "如何提交日报并补录任务快照？",
+            ]
+        elif branch == "LP":
+            recommended = [
+                "如何查看课程上线进度？",
+                "如何管理版本需求与任务？",
+                "如何查看团队数据洞察？",
+            ]
+        return AISystemKnowledgeResponse(welcome=welcome, recommended=recommended)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取系统知识失败: {str(e)}")
+
+
+@app.post("/api/v1/ai/chat", response_model=AIChatResponse)
+async def ai_chat(
+    req: AIChatRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """简单规则的 AI 向导聊天（用于浮动球），后续可接入真实大模型"""
+    try:
+        q = (req.question or "").strip()
+        answer = "这是 AI 向导的示例回答：请在系统中查找对应功能入口。"
+        if re.search(r"任务|进度", q):
+            answer = "任务进度可在“任务管理”与“仪表盘”查看。"
+        elif re.search(r"日报|提交", q):
+            answer = "提交日报请进入“日报”页面，点击新建后填写并提交。"
+        elif re.search(r"目标|月度", q):
+            answer = "月度目标可在“分析/目标管理”页进行设置与查看。"
+        elif re.search(r"AI|洞察|分析", q):
+            answer = "AI 数据洞察入口位于“分析”模块，可生成趋势与摘要。"
+        return AIChatResponse(answer=answer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI聊天失败: {str(e)}")
+
+
+# ==================== 统一 AI 答复编排 ====================
+
+def _classify_intent(text: str) -> str:
+    """启发式意图分类：knowledge / data / hybrid"""
+    t = (text or '').lower()
+    # 中文关键词简单匹配
+    knowledge_keys = ["规则", "流程", "解释", "如何", "说明", "背景", "政策", "标准", "定义", "指南"]
+    data_keys = ["趋势", "环比", "同比", "占比", "指标", "完成率", "销量", "续费", "升级", "数据", "统计", "图表", "报表", "分析", "目标", "变化", "增长"]
+    k_hit = any(kw in text for kw in knowledge_keys)
+    d_hit = any(kw in text for kw in data_keys)
+    if k_hit and d_hit:
+        return "hybrid"
+    if d_hit:
+        return "data"
+    if k_hit:
+        return "knowledge"
+    # 默认：根据提问形式猜测
+    return "knowledge" if re.search(r"(如何|是什么|怎么|为啥|为什么)", text) else "data"
+
+
+def _resolve_output_target(current_user: User, explicit: Optional[str]) -> str:
+    if explicit in ("personal", "team"):
+        return explicit
+    # 管理类角色默认团队视角，其余默认个人
+    if getattr(current_user, "is_admin", False) or getattr(current_user, "is_super_admin", False):
+        return "team"
+    return "personal"
+
+
+def _pick_function_for_target(db: Session, target: str) -> Optional[AIFunction]:
+    name = "个人数据洞察" if target == "personal" else "团队数据洞察"
+    func = db.query(AIFunction).filter(AIFunction.name == name, AIFunction.is_active == True).first()
+    if func:
+        return func
+    # 回退：取最近的启用功能
+    return db.query(AIFunction).filter(AIFunction.is_active == True).order_by(AIFunction.created_at.desc()).first()
+
+
+@app.post("/api/v1/ai/answer", response_model=AIAnswerResponse)
+async def ai_answer(
+    req: AIAnswerRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """统一 AI 答复：意图识别 → 检索/聚合 → 输出组织（由智能体 System Prompt 决定）。"""
+    try:
+        intent = _classify_intent(req.question or "")
+        target = _resolve_output_target(current_user, req.output_target)
+
+        # 选择功能点与对应智能体
+        function = _pick_function_for_target(db, target)
+        agent_id = function.agent_id if function else None
+        function_id = function.id if function else None
+
+        # 组装数据上下文（仅数据意图或混合）
+        data_used = False
+        data_sources: List[Dict[str, Any]] = []
+        data_summary = None
+        if intent in ("data", "hybrid"):
+            data_used = True
+            # 用统一数据接口与总结接口
+            analytics_payload = await analytics_ai_insight_summary({
+                "start_date": req.start_date,
+                "end_date": req.end_date,
+                "role_scope": req.role_scope,
+                "group_id": req.group_id,
+                "user_id": req.user_id,
+            }, db, current_user)
+            data_summary = analytics_payload
+            # 汇总来源（简化）
+            data_sources.append({
+                "type": "analytics_summary",
+                "period": {"start": req.start_date, "end": req.end_date},
+                "role_scope": req.role_scope or current_user.get_ai_knowledge_branch(),
+            })
+
+        # 组装知识上下文（总是纳入 Summary 逻辑，但此处为占位）
+        knowledge_used = intent in ("knowledge", "hybrid")
+        kb_sources: List[Dict[str, Any]] = []
+        if knowledge_used:
+            # 当前版本未接入真实知识库，放占位说明
+            kb_sources.append({
+                "type": "kb",
+                "modules": ["Summary", (current_user.identity_type or "").upper()],
+                "note": "知识库检索尚未接入，后续将返回已发布条目摘要",
+            })
+
+        # 生成最终文本（由智能体决定风格；当前先用启发式拼接）
+        parts = []
+        # 结论
+        if intent == "data" and data_summary:
+            parts.append(f"结论：{data_summary.get('summary', '暂无数据总结')}。")
+        elif intent == "knowledge":
+            parts.append("结论：依据 Summary 与身份模块的规则进行处理；当前知识库尚未接入，建议参考知识页的已发布内容。")
+        else:  # hybrid
+            if data_summary:
+                parts.append(f"结论：{data_summary.get('summary', '暂无数据总结')}；结合背景规则执行相应流程。")
+            else:
+                parts.append("结论：结合通用背景与身份规则处理，该问题涉及数据与知识。")
+
+        # 依据
+        evidences = []
+        if data_summary:
+            evidences.append("数据依据：分析总结与关键指标已纳入。")
+        if knowledge_used:
+            evidences.append("知识依据：Summary 模块与身份模块（占位）。")
+        if evidences:
+            parts.append("依据：" + "；".join(evidences))
+
+        # 建议
+        if data_summary and isinstance(data_summary.get("suggestions"), list) and data_summary["suggestions"]:
+            parts.append("建议：" + "；".join(data_summary["suggestions"]))
+        else:
+            parts.append("建议：如需更具体建议，请明确时间范围/身份视角或补充问题细化。")
+
+        answer_text = "\n".join(parts)
+
+        # 写入调用日志
+        start_time = datetime.utcnow()
+        call_log = AICallLog(
+            function_id=function_id,
+            agent_id=agent_id,
+            user_id=current_user.id,
+            request_data={
+                "question": req.question,
+                "intent": intent,
+                "output_target": target,
+                "start_date": req.start_date,
+                "end_date": req.end_date,
+                "role_scope": req.role_scope,
+                "group_id": req.group_id,
+                "page_context": req.page_context,
+            },
+            status=CallStatus.SUCCESS,
+            duration_ms=0,
+            started_at=start_time,
+            completed_at=datetime.utcnow(),
+            response_data={"answer": answer_text}
+        )
+        db.add(call_log)
+        db.commit()
+
+        return AIAnswerResponse(
+            answer=answer_text,
+            used={"knowledge": knowledge_used, "data": data_used, "hybrid": intent == "hybrid"},
+            output_target=target,
+            agent_id=agent_id,
+            function_id=function_id,
+            sources=(kb_sources + data_sources) or None,
+            meta={"intent": intent}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI统一答复失败: {str(e)}")
+
 @app.put("/api/v1/settings/system", response_model=SystemSettingsResponse)
 async def update_system_settings(
     settings_data: SystemSettingsUpdateRequest,
@@ -3287,12 +5110,13 @@ async def startup_event():
             username="admin",
             role="super_admin",
             identity_type="CC",  # 默认为CC身份
-            organization="系统管理"
+            organization="系统管理",
+            hashed_password=get_password_hash("51talk2025")
         )
         db.add(admin_user)
         db.commit()
         print("✓ 已创建默认超级管理员: admin")
-        print("请使用用户名 'admin' 登录系统")
+        print("默认密码：51talk2025（请登陆后尽快修改）")
     else:
         # 确保该用户是超级管理员
         if existing_admin.role != "super_admin":
@@ -3303,6 +5127,11 @@ async def startup_event():
             print("✓ 已将用户 'admin' 升级为超级管理员")
         else:
             print("✓ 超级管理员 'admin' 已存在")
+        # 若 admin 未设置密码，则初始化默认密码
+        if not existing_admin.hashed_password:
+            existing_admin.hashed_password = get_password_hash("51talk2025")
+            db.commit()
+            print("✓ 已为 'admin' 初始化默认密码：51talk2025（请尽快修改）")
     
     db.close()
 

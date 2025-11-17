@@ -44,12 +44,24 @@
         </div>
       </div>
     </el-card>
+    
+    <!-- 玻璃拟态卡片示例（独立类 .glass-card，可复用） -->
+    <div class="glass-demo bubble-bg">
+      <div class="glass-card">
+        <div class="glass-demo-content">
+          <h3 style="margin: 0 0 8px 0;">Glass 卡片示例</h3>
+          <p style="margin: 0;">这是一个玻璃拟态卡片示例，背景会被模糊处理，便于复用。</p>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue'
-import { Plus, Check, Delete } from '@element-plus/icons-vue'
+import Plus from '~icons/tabler/plus'
+import Check from '~icons/tabler/check'
+import Delete from '~icons/tabler/trash'
 
 const loading = ref(false)
 
@@ -76,5 +88,14 @@ const toggleLoading = () => {
   gap: 12px;
   margin-bottom: 20px;
   flex-wrap: wrap;
+}
+
+.glass-demo {
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.glass-demo-content {
+  min-height: 100px;
 }
 </style>

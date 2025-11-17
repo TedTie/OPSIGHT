@@ -268,15 +268,13 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import {
-  Clock,
-  Loading,
-  Check,
-  Document,
-  Plus,
-  EditPen,
-  TrendCharts
-} from '@element-plus/icons-vue'
+import Clock from '~icons/tabler/clock'
+import Loading from '~icons/tabler/loader-2'
+import Check from '~icons/tabler/check'
+import Document from '~icons/tabler/file-text'
+import Plus from '~icons/tabler/plus'
+import EditPen from '~icons/tabler/edit'
+import TrendCharts from '~icons/tabler/chart-line'
 import { useAuthStore } from '@/stores/auth'
 import { formatDate, formatDateTime, getWeekStartEnd, getMonthStartEnd } from '@/utils/date'
 import api from '@/utils/api'
@@ -694,7 +692,7 @@ onMounted(async () => {
   text-align: center;
   padding: 20px;
   border-radius: 8px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--brand-gradient);
   color: white;
   margin-bottom: 16px;
 }

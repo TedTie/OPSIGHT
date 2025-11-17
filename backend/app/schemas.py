@@ -289,6 +289,44 @@ class AICallResponse(BaseModel):
     call_log_id: Optional[int] = None
 
 
+# ====== AI 系统知识与聊天（浮动球） ======
+class AISystemKnowledgeResponse(BaseModel):
+    welcome: Optional[str] = None
+    recommended: List[str] = []
+
+
+class AIChatRequest(BaseModel):
+    question: str
+    context: Optional[Dict[str, Any]] = None
+
+
+class AIChatResponse(BaseModel):
+    answer: str
+
+
+# ====== 统一 AI 答复编排 ======
+class AIAnswerRequest(BaseModel):
+    question: str
+    output_target: Optional[str] = None  # personal | team
+    role_scope: Optional[str] = None     # CC / SS / LP / ALL / CC_SS
+    group_id: Optional[int] = None
+    user_id: Optional[int] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    page_context: Optional[str] = None
+    identity_hint: Optional[str] = None  # 文本中显式身份提示（如含“CC/SS/LP”）
+
+
+class AIAnswerResponse(BaseModel):
+    answer: str
+    used: Dict[str, bool]  # {"knowledge": bool, "data": bool, "hybrid": bool}
+    output_target: str
+    agent_id: Optional[int] = None
+    function_id: Optional[int] = None
+    sources: Optional[List[Dict[str, Any]]] = None
+    meta: Optional[Dict[str, Any]] = None
+
+
 # AI统计信息schema
 class AIStatsResponse(BaseModel):
     total_calls: int
@@ -312,11 +350,12 @@ class PaginatedAICallLogResponse(BaseModel):
 class UserCreateRequest(BaseModel):
     password: str
     username: str
-    email: str
+    email: Optional[str] = None
     role: str = "user"  # super_admin, admin, user
     identity_type: Optional[str] = None  # cc, ss, lp
     organization: Optional[str] = None
     group_id: Optional[int] = None
+    is_active: Optional[bool] = True
 
 class UserUpdateRequest(BaseModel):
     role: Optional[str] = None
@@ -324,6 +363,8 @@ class UserUpdateRequest(BaseModel):
     organization: Optional[str] = None
     group_id: Optional[int] = None
     is_active: Optional[bool] = None
+    # 新增：支持更新密码（留空不修改）
+    password: Optional[str] = None
 
 class UserResponse(BaseModel):
     id: int
@@ -345,6 +386,8 @@ class UserResponse(BaseModel):
 
 class LoginRequest(BaseModel):
     username: str
+    password: str
+    remember_me: Optional[bool] = False
 
 class AuthResponse(BaseModel):
     message: str
@@ -362,6 +405,15 @@ class DailyReportCreateRequest(BaseModel):
     efficiency_score: int  # 1-10分
     call_count: int = 0
     call_duration: int = 0  # 分钟
+    # 销售与业务数据
+    new_sign_count: int = 0
+    new_sign_amount: float = 0.0
+    referral_count: int = 0
+    referral_amount: float = 0.0
+    renewal_count: int = 0
+    renewal_amount: float = 0.0
+    upgrade_count: int = 0
+    upgrade_amount: float = 0.0
     achievements: Optional[str] = None
     challenges: Optional[str] = None
     tomorrow_plan: Optional[str] = None
@@ -379,6 +431,15 @@ class DailyReportUpdateRequest(BaseModel):
     efficiency_score: Optional[int] = None
     call_count: Optional[int] = None
     call_duration: Optional[int] = None
+    # 销售与业务数据
+    new_sign_count: Optional[int] = None
+    new_sign_amount: Optional[float] = None
+    referral_count: Optional[int] = None
+    referral_amount: Optional[float] = None
+    renewal_count: Optional[int] = None
+    renewal_amount: Optional[float] = None
+    upgrade_count: Optional[int] = None
+    upgrade_amount: Optional[float] = None
     achievements: Optional[str] = None
     challenges: Optional[str] = None
     tomorrow_plan: Optional[str] = None
@@ -399,10 +460,57 @@ class DailyReportResponse(BaseModel):
     efficiency_score: int
     call_count: int
     call_duration: int
+    # 销售与业务数据
+    new_sign_count: int
+    new_sign_amount: float
+    referral_count: int
+    referral_amount: float
+    renewal_count: int
+    renewal_amount: float
+    upgrade_count: int
+    upgrade_amount: float
     achievements: Optional[str] = None
     challenges: Optional[str] = None
     tomorrow_plan: Optional[str] = None
     ai_analysis: Optional[Dict[str, Any]] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+# 月度目标相关 schemas
+class MonthlyGoalUpsertRequest(BaseModel):
+    identity_type: str  # CC / SS
+    scope: str  # global / group / user
+    year: int
+    month: int
+    group_id: Optional[int] = None
+    user_id: Optional[int] = None
+    amount_target: Optional[float] = 0.0
+    # 新增细分目标金额字段（可选，未设置则默认0以便后端兼容）
+    new_sign_target_amount: Optional[float] = 0.0
+    referral_target_amount: Optional[float] = 0.0
+    renewal_total_target_amount: Optional[float] = 0.0
+    renewal_target_count: Optional[int] = 0
+    upgrade_target_count: Optional[int] = 0
+    notes: Optional[str] = None
+
+class MonthlyGoalResponse(BaseModel):
+    id: int
+    identity_type: str
+    scope: str
+    year: int
+    month: int
+    group_id: Optional[int] = None
+    user_id: Optional[int] = None
+    amount_target: float
+    new_sign_target_amount: float
+    referral_target_amount: float
+    renewal_total_target_amount: float
+    renewal_target_count: int
+    upgrade_target_count: int
+    notes: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -511,6 +619,13 @@ class JielongParticipationCreate(BaseModel):
 
 class TaskProgressUpdate(BaseModel):
     value: float
+
+# 通知已读同步
+class NotificationReadSyncRequest(BaseModel):
+    ids: List[str]
+
+class NotificationReadMapResponse(BaseModel):
+    ids: List[str]
 
 # User schemas for compatibility
 class UserCreate(BaseModel):

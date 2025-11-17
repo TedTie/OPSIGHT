@@ -1,3 +1,75 @@
+/* 设计令牌与主题变量（Upstream风格） */
+:root {
+  /* 品牌与语义色 */
+  --color-primary: #10b981; /* Teal / Emerald */
+  --color-secondary: #0ea5e9; /* Sky blue */
+  --color-accent: #6366f1; /* Indigo */
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+
+  /* 中性色与背景 */
+  --text-strong: #0f172a; /* slate-900 */
+  --text-muted: #64748b;  /* slate-500 */
+  --bg-page: #f6f9fb;
+  --bg-soft: #f0f4f8;
+  --surface: #ffffff;
+
+  /* 圆角与阴影 */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 3px rgba(2, 8, 23, 0.08);
+  --shadow-md: 0 8px 24px rgba(2, 8, 23, 0.08);
+  --shadow-lg: 0 12px 32px rgba(2, 8, 23, 0.10);
+
+  /* 品牌渐变与气泡主题（更偏绿的渐变） */
+  --gradient-start: #28c76f; /* 绿 */
+  --gradient-end: #81fbb8;   /* 淡绿 */
+  --brand-gradient: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+  --bubble-1: rgba(40, 199, 111, 0.14); /* 绿 */
+  --bubble-2: rgba(129, 251, 184, 0.12);  /* 淡绿 */
+  --bubble-3: rgba(63, 230, 143, 0.12);   /* 绿 */
+
+  /* Element Plus 主题变量覆盖 */
+  --el-color-primary: var(--color-primary);
+  --el-color-success: var(--color-success);
+  --el-color-warning: var(--color-warning);
+  --el-color-danger: var(--color-error);
+  --el-border-radius-base: var(--radius-sm);
+  --el-box-shadow-light: var(--shadow-sm);
+  --el-box-shadow: var(--shadow-md);
+  --el-box-shadow-dark: var(--shadow-lg);
+}
+
+/* 品牌渐变文字工具类 */
+.brand-gradient-text {
+  background: var(--brand-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 气泡背景（非侵入式装饰层） */
+.bubble-bg {
+  position: relative;
+}
+.bubble-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(1200px 800px at -10% 10%, var(--bubble-1), transparent 40%),
+    radial-gradient(800px 600px at 120% 20%, var(--bubble-2), transparent 45%),
+    radial-gradient(600px 600px at 50% -20%, var(--bubble-3), transparent 50%);
+}
+.bubble-bg > * {
+  position: relative;
+  z-index: 1;
+}
+
 /* 全局样式 */
 * {
   margin: 0;
@@ -8,7 +80,8 @@
 html, body {
   height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background-color: #f5f5f5;
+  background-color: var(--bg-page);
+  color: var(--text-strong);
 }
 
 #app {
@@ -88,22 +161,78 @@ html, body {
   opacity: 0;
 }
 
-/* Element Plus 自定义样式覆盖 */
+/* Element Plus 默认卡片样式（已回退） */
+
+/* 玻璃拟态卡片：独立类，可按需复用 */
+.glass-card {
+  position: relative;
+  border-radius: 22px; /* 更圆润的角 */
+  background: rgba(255, 255, 255, 0.12); /* 更强的透明感 */
+  -webkit-backdrop-filter: blur(22px); /* 背景模糊（Safari） */
+  backdrop-filter: blur(22px); /* 背景模糊 */
+  border: 1px solid rgba(255, 255, 255, 0.65); /* 更亮的半透明边框 */
+  box-shadow: 0 12px 28px rgba(2, 8, 23, 0.12), 0 4px 10px rgba(2, 8, 23, 0.06); /* 更柔和的悬浮阴影 */
+  padding: 16px; /* 内容内边距 */
+  background-clip: padding-box; /* 保持边框高光效果 */
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, background 0.25s ease;
+}
+
+/* 顶部高光与玻璃纹理（不影响交互） */
+.glass-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(140px 90px at 20% 12%, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.08) 60%, transparent 70%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 40%);
+}
+
+.glass-card:hover {
+  box-shadow: 0 16px 36px rgba(2, 8, 23, 0.18), 0 6px 14px rgba(2, 8, 23, 0.08);
+  border-color: rgba(255, 255, 255, 0.72);
+}
+
+/* 全局 Element Plus 卡片玻璃化 */
 .el-card {
-  border-radius: 8px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  position: relative;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.12);
+  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(22px);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  box-shadow: 0 12px 28px rgba(2, 8, 23, 0.12), 0 4px 10px rgba(2, 8, 23, 0.06);
+  background-clip: padding-box;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, background 0.25s ease;
+}
+
+.el-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(140px 90px at 20% 12%, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.08) 60%, transparent 70%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 40%);
+}
+
+.el-card:hover {
+  box-shadow: 0 16px 36px rgba(2, 8, 23, 0.18), 0 6px 14px rgba(2, 8, 23, 0.08);
+  border-color: rgba(255, 255, 255, 0.72);
 }
 
 .el-button {
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 .el-input__wrapper {
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 .el-select .el-input__wrapper {
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 /* 表格样式优化 */
@@ -113,7 +242,7 @@ html, body {
 }
 
 .el-table th.el-table__cell {
-  background-color: #fafafa;
+  background-color: var(--bg-soft);
   font-weight: 600;
 }
 
@@ -122,10 +251,18 @@ html, body {
   font-weight: 500;
 }
 
+/* 图标尺寸微调（统一略微增大） */
+.el-icon {
+  font-size: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* 页面布局样式 */
 .page-container {
   padding: 24px;
-  background-color: #f5f5f5;
+  background-color: var(--bg-page);
   min-height: calc(100vh - 60px);
 }
 
@@ -136,12 +273,12 @@ html, body {
 .page-title {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--text-strong);
   margin-bottom: 8px;
 }
 
 .page-description {
-  color: #606266;
+  color: var(--text-muted);
   font-size: 14px;
 }
 
@@ -154,7 +291,7 @@ html, body {
 .stats-card .stats-number {
   font-size: 32px;
   font-weight: bold;
-  color: #409eff;
+  color: var(--el-color-primary);
   margin-bottom: 8px;
 }
 

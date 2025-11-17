@@ -1,12 +1,18 @@
 <template>
   <div id="app">
     <router-view />
+    <!-- 全局 AI 浮动球 -->
+    <AIFloatingBall v-if="authStore.isAuthenticated" />
   </div>
 </template>
 
 <script setup>
 // App.vue - 主应用组件
 // 认证状态初始化已在main.js中完成
+import AIFloatingBall from '@/components/AIFloatingBall.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
 </script>
 
 <style>
