@@ -1,4 +1,5 @@
 {
+  "version": 2,
   "builds": [
     {
       "src": "frontend/package.json",
@@ -6,9 +7,9 @@
       "config": { "distDir": "frontend/dist" }
     }
   ],
-  "installCommand": "cd frontend && npm ci",
-  "buildCommand": "cd frontend && npm run build",
-  "routes": [
-    { "src": "/(.*)", "dest": "index.html" }
+  "installCommand": "npm ci --prefix frontend",
+  "buildCommand": "npm run build --prefix frontend",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
