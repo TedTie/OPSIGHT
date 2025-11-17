@@ -7,7 +7,7 @@
       "config": { "distDir": "frontend/dist" }
     }
   ],
-  "installCommand": "npm ci --prefix frontend",
+  "installCommand": "npm ci --prefix frontend --production=false",
   "buildCommand": "npm run build --prefix frontend",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
