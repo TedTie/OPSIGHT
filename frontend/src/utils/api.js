@@ -2,11 +2,12 @@ import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '@/router'
 
-// 创建axios实例
+const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+const useCreds = String(import.meta.env.VITE_USE_CREDENTIALS || '').toLowerCase() === 'true'
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1', // 使用代理路径
-  timeout: 10000, // 减少超时时间
-  withCredentials: true, // 支持cookie
+  baseURL: baseURL,
+  timeout: 10000,
+  withCredentials: useCreds,
   headers: {
     'Content-Type': 'application/json'
   }
