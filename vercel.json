@@ -5,6 +5,7 @@
   "buildCommand": "npm run build --prefix frontend",
   "rewrites": [
     { "source": "/api/v1/(.*)", "destination": "https://hmzwgteftyiwfhepkvco.functions.supabase.co/killerapp/api/v1/$1" },
+    { "source": "/auth/(.*)", "destination": "https://hmzwgteftyiwfhepkvco.functions.supabase.co/killerapp/auth/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
