@@ -69,34 +69,22 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if ((afterFn.startsWith("auth/me") || afterFn.startsWith("api/v1/auth/me")) && req.method === "GET") {
-    return json({ id: 1, username: "demo", role: "super_admin" })
+    return json({ id: 1, username: "admin", role: "super_admin" })
   }
 
   if (afterFn.startsWith("api/v1/analytics/summary") && req.method === "GET") {
     const idt = (u.searchParams.get("identity_type") || "").toUpperCase()
-    if (idt === "CC") return json({ month: { actual_amount: 250000, new_sign_amount: 215000, referral_amount: 35000, referral_count: 12 }, progress_display: { amount_rate: 0.8, new_sign_achievement_rate: 0.72, referral_achievement_rate: 0.35 } })
-    if (idt === "SS") return json({ month: { actual_amount: 200000, renewal_amount: 120000, upgrade_amount: 80000, renewal_count: 24, upgrade_count: 9 }, progress_display: { total_renewal_achievement_rate: 0.6 } })
+    if (idt === "CC") return json({ month: { actual_amount: 0, new_sign_amount: 0, referral_amount: 0, referral_count: 0 }, progress_display: {} })
+    if (idt === "SS") return json({ month: { actual_amount: 0, renewal_amount: 0, upgrade_amount: 0, renewal_count: 0, upgrade_count: 0 }, progress_display: {} })
     return json({ month: { actual_amount: 0 } })
   }
 
   if (afterFn.startsWith("api/v1/analytics/trend") && req.method === "GET") {
-    const now = new Date()
-    const series: any[] = []
-    for (let i = 9; i >= 0; i--) {
-      const d = new Date(now)
-      d.setDate(now.getDate() - i)
-      const day = d.toISOString().slice(0, 10)
-      const ns = Math.round(60000 + Math.random() * 40000)
-      const rf = Math.round(15000 + Math.random() * 20000)
-      const rn = Math.round(50000 + Math.random() * 40000)
-      const ug = Math.round(20000 + Math.random() * 30000)
-      series.push({ date: day, new_sign_amount: ns, referral_amount: rf, renewal_amount: rn, upgrade_amount: ug, referral_count: Math.floor(1 + Math.random() * 5), renewal_count: Math.floor(3 + Math.random() * 8), upgrade_count: Math.floor(1 + Math.random() * 4) })
-    }
-    return json({ series })
+    return json({ series: [] })
   }
 
   if (afterFn.startsWith("api/v1/analytics/data") && req.method === "GET") {
-    const metrics = { task_completion_rate: 0.82, report_submission_rate: 0.93, call_count: 180, new_leads_count: 45, conversion_rate: 0.23, active_students: 620, refund_rate: 0.015, course_completion_rate: 0.71 }
+    const metrics = { task_completion_rate: 0, report_submission_rate: 0 }
     return json({ metrics })
   }
 
@@ -109,16 +97,7 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if (afterFn.startsWith("api/v1/goals/monthly") && req.method === "GET") {
-    const year = Number(u.searchParams.get("year") || new Date().getFullYear())
-    const month = Number(u.searchParams.get("month") || (new Date().getMonth() + 1))
-    const cc_new = 300000
-    const cc_ref = 100000
-    const ss_total = 120000
-    const goals = [
-      { id: 1, identity_type: "CC", scope: "global", year, month, amount_target: cc_new + cc_ref, new_sign_target_amount: cc_new, referral_target_amount: cc_ref, renewal_total_target_amount: 0, upgrade_target_count: 8, renewal_target_count: 0, notes: null, created_at: null, updated_at: null },
-      { id: 2, identity_type: "SS", scope: "global", year, month, amount_target: ss_total, new_sign_target_amount: 0, referral_target_amount: 0, renewal_total_target_amount: ss_total, upgrade_target_count: 12, renewal_target_count: 0, notes: null, created_at: null, updated_at: null }
-    ]
-    return json(goals)
+    return json([])
   }
 
   if (afterFn.startsWith("api/v1/goals/monthly") && req.method === "POST") {
@@ -127,16 +106,7 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if (afterFn.startsWith("api/v1/goals/monthly/personal") && req.method === "GET") {
-    const identity_type = (u.searchParams.get("identity_type") || "").toUpperCase()
-    const group_id = u.searchParams.get("group_id") || ""
-    const year = u.searchParams.get("year") || ""
-    const month = u.searchParams.get("month") || ""
-    const user_id = u.searchParams.get("user_id") || null
-    const key = `${identity_type}|${group_id}|${year}|${month}`
-    const bucket = personalGoalsStore[key] || {}
-    let items = Object.values(bucket)
-    if (user_id) items = items.filter((it: any) => String(it.user_id) === String(user_id))
-    return json({ items })
+    return json({ items: [] })
   }
 
   if (afterFn.startsWith("api/v1/goals/monthly/personal") && req.method === "POST") {
@@ -158,28 +128,15 @@ serve(async (req: Request): Promise<Response> => {
   if (afterFn.startsWith("api/v1/users") && req.method === "GET") {
     const page = Number(u.searchParams.get("page") || "1")
     const size = Number(u.searchParams.get("size") || "10")
-    const start = (page - 1) * size
-    const items = mockUsers.slice(start, start + size)
-    return json({ items, total: mockUsers.length, page, size })
+    return json({ items: [], total: 0, page, size })
   }
 
   if (afterFn.startsWith("api/v1/groups/") && afterFn.endsWith("/members") && req.method === "GET") {
-    const parts2 = afterFn.split("/")
-    const gid = parts2[3]
-    const items = mockUsers.filter(m => String(m.group_id) === String(gid)).map(m => ({ id: m.id, username: m.username, identity_type: m.identity_type, group_id: m.group_id, group_name: m.group_name }))
-    return json({ items, total: items.length, page: 1, size: items.length })
+    return json({ items: [], total: 0, page: 1, size: 0 })
   }
 
   if (afterFn.startsWith("api/v1/groups") && req.method === "GET") {
-    const uniq = new Map<string, any>()
-    for (const u2 of mockUsers) {
-      if (u2.group_id != null) {
-        const gid = String(u2.group_id)
-        if (!uniq.has(gid)) uniq.set(gid, { id: u2.group_id, name: u2.group_name, description: "", member_count: 0 })
-      }
-    }
-    const items = Array.from(uniq.values())
-    return json({ items, total: items.length, page: 1, size: items.length })
+    return json({ items: [], total: 0, page: 1, size: 0 })
   }
 
   if (afterFn.startsWith("api/v1/admin/metrics") && req.method === "GET") {
