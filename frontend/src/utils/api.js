@@ -18,6 +18,9 @@ if (supabaseAnonKey) {
   api.defaults.headers.common['Authorization'] = `Bearer ${supabaseAnonKey}`
   api.defaults.headers.common['apikey'] = supabaseAnonKey
 }
+if (!supabaseAnonKey && import.meta && import.meta.env && import.meta.env.PROD) {
+  ElMessage.warning('后端鉴权未配置，无法获取真实数据，请在 Vercel 设置 VITE_SUPABASE_ANON_KEY 并重新部署')
+}
 
 // 添加调试日志
 console.log('🔧 Axios配置:', {

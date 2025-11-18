@@ -133,6 +133,7 @@ import ArrowDown from '~icons/tabler/chevron-down'
 import { useAuthStore } from '@/stores/auth'
 import TextFlip from '@/components/Effects/TextFlip.vue'
 import api from '@/utils/api'
+const useMock = String(import.meta.env.VITE_USE_MOCK || '').toLowerCase() === 'true' && !!(import.meta.env && import.meta.env.DEV)
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -384,9 +385,14 @@ const refreshNotifications = async () => {
   } catch (e) {
     console.error('刷新通知失败：', e)
     if (notifications.value.length === 0) {
-      notifications.value = [...mockNotifications]
-      notifications.value.forEach(n => { if (readMap.value[n.id]) n.is_read = true })
-      updateNotificationCount()
+      if (useMock) {
+        notifications.value = [...mockNotifications]
+        notifications.value.forEach(n => { if (readMap.value[n.id]) n.is_read = true })
+        updateNotificationCount()
+      } else {
+        notifications.value = []
+        updateNotificationCount()
+      }
     }
   } finally {
     notificationsLoading.value = false
