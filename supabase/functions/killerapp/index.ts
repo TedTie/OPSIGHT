@@ -55,7 +55,13 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if ((afterFn.startsWith("auth/login") || afterFn.startsWith("api/v1/auth/login")) && req.method === "POST") {
-    return json({ user: { id: 1, username: "demo", role: "super_admin" } })
+    const body = await parseBody(req) as { username?: string, password?: string }
+    const username = String(body.username || "")
+    const password = String(body.password || "")
+    if (username === "admin" && password === "51talk2025") {
+      return json({ user: { id: 1, username: "admin", role: "super_admin" } })
+    }
+    return json({ detail: "用户名不存在或账户已被禁用" }, 401)
   }
 
   if ((afterFn.startsWith("auth/logout") || afterFn.startsWith("api/v1/auth/logout")) && req.method === "POST") {
