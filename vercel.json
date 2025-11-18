@@ -7,7 +7,7 @@
       "config": { "distDir": "frontend/dist" }
     }
   ],
-  "installCommand": "npm ci --prefix frontend --production=false",
+  "installCommand": "npm install --prefix frontend",
   "buildCommand": "npm run build --prefix frontend",
   "rewrites": [
     { "source": "/api/v1/(.*)", "destination": "https://hmzwgteftyiwfhepkvco.supabase.co/functions/v1/killerapp/api/v1/$1" },
