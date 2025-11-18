@@ -13,11 +13,19 @@ const api = axios.create({
   }
 })
 
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+if (supabaseAnonKey) {
+  api.defaults.headers.common['Authorization'] = `Bearer ${supabaseAnonKey}`
+  api.defaults.headers.common['apikey'] = supabaseAnonKey
+}
+
 // 添加调试日志
 console.log('🔧 Axios配置:', {
   baseURL: api.defaults.baseURL,
   timeout: api.defaults.timeout,
-  withCredentials: api.defaults.withCredentials
+  withCredentials: api.defaults.withCredentials,
+  hasAuthHeader: !!api.defaults.headers.common['Authorization'],
+  hasApiKeyHeader: !!api.defaults.headers.common['apikey']
 })
 
 // 请求拦截器

@@ -2,30 +2,26 @@ param(
   [string]$ProjectRef = "hmzwgteftyiwfhepkvco"
 )
 
-function Require-Command($name) {
-  if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
-    Write-Error "命令 '$name' 未安装。请先安装 Supabase CLI 后重试：winget install Supabase.SupabaseCLI 或参考官方文档。"
-    exit 1
-  }
+if (-not (Get-Command supabase -ErrorAction SilentlyContinue)) {
+  Write-Error 'Supabase CLI not found. Install via Scoop: iwr -useb get.scoop.sh | iex; scoop bucket add supabase https://github.com/supabase/scoop-bucket.git; scoop install supabase'
+  exit 1
 }
 
-Require-Command "supabase"
-
-Write-Host "请输入 SUPABASE_ACCESS_TOKEN（不会回显）：" -ForegroundColor Green
+Write-Host 'Enter SUPABASE_ACCESS_TOKEN (input is hidden):' -ForegroundColor Green
 $secure = Read-Host -AsSecureString
 $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
 $token = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+[System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
 
-if ([string]::IsNullOrWhiteSpace($token)) { Write-Error "未提供 Access Token"; exit 1 }
+if ([string]::IsNullOrWhiteSpace($token)) { Write-Error 'Access Token is empty'; exit 1 }
 
 $env:SUPABASE_ACCESS_TOKEN = $token
 
 try {
-  supabase login | Out-Null
+  supabase login --token $token --no-browser | Out-Null
   supabase link --project-ref $ProjectRef | Out-Null
   supabase functions deploy killerapp | Out-Null
-  Write-Host "Supabase 函数部署完成：killerapp" -ForegroundColor Green
+  Write-Host 'Supabase function deployed: killerapp' -ForegroundColor Green
 }
 finally {
   $env:SUPABASE_ACCESS_TOKEN = $null

@@ -206,25 +206,26 @@ app = FastAPI(
 # 添加会话中间件
 app.add_middleware(
     SessionMiddleware,
-    secret_key="your-secret-key-here-change-in-production",
-    max_age=86400  # 24小时
+    secret_key=os.getenv("SESSION_SECRET", "replace-this-in-prod"),
+    max_age=86400
 )
 
-# 添加 CORS 中间件
+origins_env = os.getenv("ALLOWED_ORIGINS")
+origins = [o.strip() for o in origins_env.split(",") if o.strip()] if origins_env else [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://localhost:3002",
+    "http://127.0.0.1:3002",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3003",
+    "http://127.0.0.1:3003",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-        "http://localhost:3002",
-        "http://127.0.0.1:3002",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3003",
-        "http://127.0.0.1:3003",
-    ],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
