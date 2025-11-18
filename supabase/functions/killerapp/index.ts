@@ -3,7 +3,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts"
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With"
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, X-Client-Info, X-Requested-With"
 }
 
 function json(data: unknown, status = 200) {
