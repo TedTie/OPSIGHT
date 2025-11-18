@@ -54,15 +54,15 @@ serve(async (req: Request): Promise<Response> => {
     return json({ answer })
   }
 
-  if (afterFn.startsWith("auth/login") && req.method === "POST") {
+  if ((afterFn.startsWith("auth/login") || afterFn.startsWith("api/v1/auth/login")) && req.method === "POST") {
     return json({ user: { id: 1, username: "demo", role: "super_admin" } })
   }
 
-  if (afterFn.startsWith("auth/logout") && req.method === "POST") {
+  if ((afterFn.startsWith("auth/logout") || afterFn.startsWith("api/v1/auth/logout")) && req.method === "POST") {
     return json({ success: true })
   }
 
-  if (afterFn.startsWith("auth/me") && req.method === "GET") {
+  if ((afterFn.startsWith("auth/me") || afterFn.startsWith("api/v1/auth/me")) && req.method === "GET") {
     return json({ id: 1, username: "demo", role: "super_admin" })
   }
 
