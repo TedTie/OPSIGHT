@@ -2,9 +2,13 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS",
+  "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, X-Client-Info, X-Requested-With"
 }
+
+let groupsStore: Array<{ id: number; name: string; description?: string; created_at: string }> = []
+let groupMembersStore: Record<number, number[]> = {}
+let nextGroupId = 1
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...corsHeaders } })
@@ -128,15 +132,80 @@ serve(async (req: Request): Promise<Response> => {
   if (afterFn.startsWith("api/v1/users") && req.method === "GET") {
     const page = Number(u.searchParams.get("page") || "1")
     const size = Number(u.searchParams.get("size") || "10")
-    return json({ items: [], total: 0, page, size })
+    const start = (page - 1) * size
+    const users = mockUsers.map(u => ({ id: u.id, username: u.username, full_name: u.username, email: `${u.username}@example.com`, role: "user" }))
+    const paged = users.slice(start, start + size)
+    return json({ items: paged, total: users.length, page, size })
   }
 
   if (afterFn.startsWith("api/v1/groups/") && afterFn.endsWith("/members") && req.method === "GET") {
-    return json({ items: [], total: 0, page: 1, size: 0 })
+    const segs = afterFn.split("/")
+    const gid = Number(segs[2])
+    const members = (groupMembersStore[gid] || [])
+      .map(uid => mockUsers.find(m => m.id === uid))
+      .filter(Boolean)
+      .map(m => ({ id: m!.id, username: m!.username, full_name: m!.username, email: `${m!.username}@example.com`, role: "user" }))
+    return json(members)
+  }
+
+  if (afterFn.startsWith("api/v1/groups/") && afterFn.endsWith("/members") && req.method === "POST") {
+    const segs = afterFn.split("/")
+    const gid = Number(segs[2])
+    const body = await parseBody(req) as { user_ids?: number[] }
+    const ids = Array.isArray(body.user_ids) ? body.user_ids.map(n => Number(n)).filter(n => !Number.isNaN(n)) : []
+    if (!ids.length) return json({ detail: "缺少用户ID" }, 422)
+    if (!groupMembersStore[gid]) groupMembersStore[gid] = []
+    const set = new Set(groupMembersStore[gid])
+    ids.forEach(id => set.add(id))
+    groupMembersStore[gid] = Array.from(set)
+    return json({ success: true })
+  }
+
+  if (afterFn.startsWith("api/v1/groups/") && /\/members\/[0-9]+$/.test(afterFn) && req.method === "DELETE") {
+    const segs = afterFn.split("/")
+    const gid = Number(segs[2])
+    const uid = Number(segs[4])
+    if (groupMembersStore[gid]) groupMembersStore[gid] = groupMembersStore[gid].filter(id => id !== uid)
+    return json({ success: true })
   }
 
   if (afterFn.startsWith("api/v1/groups") && req.method === "GET") {
-    return json({ items: [], total: 0, page: 1, size: 0 })
+    const page = Number(u.searchParams.get("page") || "1")
+    const size = Number(u.searchParams.get("size") || "10")
+    const search = String(u.searchParams.get("search") || "").trim().toLowerCase()
+    const filtered = groupsStore.filter(g => !search || g.name.toLowerCase().includes(search))
+    const start = (page - 1) * size
+    const items = filtered.slice(start, start + size).map(g => ({ ...g, member_count: (groupMembersStore[g.id] || []).length }))
+    return json({ items, total: filtered.length, page, size })
+  }
+
+  if (afterFn === "api/v1/groups" && req.method === "POST") {
+    const payload = await parseBody(req) as { name?: string; description?: string }
+    const name = String(payload.name || "").trim()
+    if (!name || name.length < 2 || name.length > 100) return json({ detail: "组织名称长度在 2 到 100 个字符" }, 422)
+    const g = { id: nextGroupId++, name, description: String(payload.description || ""), created_at: new Date().toISOString() }
+    groupsStore.push(g)
+    return json(g, 201)
+  }
+
+  if (/^api\/v1\/groups\/[0-9]+$/.test(afterFn) && req.method === "PUT") {
+    const segs = afterFn.split("/")
+    const gid = Number(segs[2])
+    const idx = groupsStore.findIndex(g => g.id === gid)
+    if (idx < 0) return json({ detail: "组织不存在" }, 404)
+    const payload = await parseBody(req) as { name?: string; description?: string }
+    const name = payload.name === undefined ? groupsStore[idx].name : String(payload.name || "").trim()
+    if (!name || name.length < 2 || name.length > 100) return json({ detail: "组织名称长度在 2 到 100 个字符" }, 422)
+    groupsStore[idx] = { ...groupsStore[idx], name, description: String(payload.description || groupsStore[idx].description || "") }
+    return json({ success: true })
+  }
+
+  if (/^api\/v1\/groups\/[0-9]+$/.test(afterFn) && req.method === "DELETE") {
+    const segs = afterFn.split("/")
+    const gid = Number(segs[2])
+    groupsStore = groupsStore.filter(g => g.id !== gid)
+    delete groupMembersStore[gid]
+    return json({ success: true })
   }
 
   if (afterFn.startsWith("api/v1/admin/metrics") && req.method === "GET") {
