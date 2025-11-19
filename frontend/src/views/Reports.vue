@@ -421,29 +421,76 @@
         
         
         
-        <el-row :gutter="20">
+      <el-row :gutter="20">
+        <el-col :span="12">
+          <el-form-item label="KPI 通次" prop="call_count">
+            <el-input-number
+              v-model="reportForm.call_count"
+              :min="0"
+              :step="1"
+              placeholder="今日拨打次数"
+            />
+          </el-form-item>
+        </el-col>
+        
+        <el-col :span="12">
+          <el-form-item label="KPI 通时" prop="call_duration">
+            <el-input-number
+              v-model="reportForm.call_duration"
+              :min="0"
+              :step="1"
+              placeholder="拨打总时长（分钟）"
+            />
+          </el-form-item>
+        </el-col>
+      </el-row>
+      
+      <el-row :gutter="20">
+        <template v-if="String(authStore.user?.identity_type || '').toLowerCase() === 'cc'">
           <el-col :span="12">
-            <el-form-item label="KPI 通次" prop="call_count">
-              <el-input-number
-                v-model="reportForm.call_count"
-                :min="0"
-                :step="1"
-                placeholder="今日拨打次数"
-              />
+            <el-form-item label="当日实收金额" prop="actual_amount">
+              <el-input-number v-model="reportForm.actual_amount" :min="0" :step="0.01" controls-position="right" />
             </el-form-item>
           </el-col>
-          
           <el-col :span="12">
-            <el-form-item label="KPI 通时" prop="call_duration">
-              <el-input-number
-                v-model="reportForm.call_duration"
-                :min="0"
-                :step="1"
-                placeholder="拨打总时长（分钟）"
-              />
+            <el-form-item label="新签金额" prop="new_sign_amount">
+              <el-input-number v-model="reportForm.new_sign_amount" :min="0" :step="0.01" controls-position="right" />
             </el-form-item>
           </el-col>
-        </el-row>
+          <el-col :span="12">
+            <el-form-item label="转介绍金额" prop="referral_amount">
+              <el-input-number v-model="reportForm.referral_amount" :min="0" :step="0.01" controls-position="right" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="转介绍单量" prop="referral_count">
+              <el-input-number v-model="reportForm.referral_count" :min="0" :step="1" controls-position="right" />
+            </el-form-item>
+          </el-col>
+        </template>
+        <template v-else-if="String(authStore.user?.identity_type || '').toLowerCase() === 'ss'">
+          <el-col :span="12">
+            <el-form-item label="续费金额" prop="renewal_amount">
+              <el-input-number v-model="reportForm.renewal_amount" :min="0" :step="0.01" controls-position="right" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="升级金额" prop="upgrade_amount">
+              <el-input-number v-model="reportForm.upgrade_amount" :min="0" :step="0.01" controls-position="right" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="续费单量" prop="renewal_count">
+              <el-input-number v-model="reportForm.renewal_count" :min="0" :step="1" controls-position="right" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="升级单量" prop="upgrade_count">
+              <el-input-number v-model="reportForm.upgrade_count" :min="0" :step="1" controls-position="right" />
+            </el-form-item>
+          </el-col>
+        </template>
+      </el-row>
       </el-form>
       
       <template #footer>
@@ -468,6 +515,12 @@
           <div class="report-meta">
             <el-tag v-if="currentReport.call_count !== undefined && currentReport.call_duration !== undefined" type="success">
               KPI 通次/通时: {{ currentReport.call_count }}/{{ currentReport.call_duration }}
+            </el-tag>
+            <el-tag v-if="(currentReport.actual_amount||currentReport.new_sign_amount||currentReport.referral_amount||currentReport.referral_count)" type="warning" style="margin-left:8px;">
+              CC 金额/单量: {{ currentReport.actual_amount }} / 新签 {{ currentReport.new_sign_amount }} / 转介 {{ currentReport.referral_amount }} / 转介单量 {{ currentReport.referral_count }}
+            </el-tag>
+            <el-tag v-if="(currentReport.renewal_amount||currentReport.upgrade_amount||currentReport.renewal_count||currentReport.upgrade_count)" type="info" style="margin-left:8px;">
+              SS 金额/单量: 续费 {{ currentReport.renewal_amount }} / 升级 {{ currentReport.upgrade_amount }} / 续费单量 {{ currentReport.renewal_count }} / 升级单量 {{ currentReport.upgrade_count }}
             </el-tag>
           </div>
         </div>
@@ -683,7 +736,15 @@ const reportForm = reactive({
   issues_encountered: '',
   next_day_plan: '',
   call_count: 0,
-  call_duration: 0
+  call_duration: 0,
+  actual_amount: 0,
+  new_sign_amount: 0,
+  referral_amount: 0,
+  referral_count: 0,
+  renewal_amount: 0,
+  upgrade_amount: 0,
+  renewal_count: 0,
+  upgrade_count: 0
 })
 
 // 任务相关数据（旧选择器不再使用，保留变量避免报错）
@@ -1136,6 +1197,14 @@ const fetchReports = async () => {
       next_day_plan: r.tomorrow_plan ?? '',
       call_count: r.call_count ?? 0,
       call_duration: r.call_duration ?? 0,
+      actual_amount: r.actual_amount ?? 0,
+      new_sign_amount: r.new_sign_amount ?? 0,
+      referral_amount: r.referral_amount ?? 0,
+      referral_count: r.referral_count ?? 0,
+      renewal_amount: r.renewal_amount ?? 0,
+      upgrade_amount: r.upgrade_amount ?? 0,
+      renewal_count: r.renewal_count ?? 0,
+      upgrade_count: r.upgrade_count ?? 0,
       ai_analysis: r.ai_analysis || {},
       created_at: r.created_at,
       updated_at: r.updated_at
@@ -1316,7 +1385,15 @@ const resetForm = () => {
     issues_encountered: '',
     next_day_plan: '',
     call_count: 0,
-    call_duration: 0
+    call_duration: 0,
+    actual_amount: 0,
+    new_sign_amount: 0,
+    referral_amount: 0,
+    referral_count: 0,
+    renewal_amount: 0,
+    upgrade_amount: 0,
+    renewal_count: 0,
+    upgrade_count: 0
   })
   selectedTaskIds.value = []
 }
@@ -1360,7 +1437,15 @@ const submitReport = async () => {
         content: unifiedContent || undefined,
         title: (reportForm.summary || `日报 ${reportForm.report_date || ''}`).slice(0, 200),
         // 结构化快照用于后端持久化（ai_analysis.tasks_snapshot）
-        tasks_snapshot: buildTasksSnapshot()
+        tasks_snapshot: buildTasksSnapshot(),
+        actual_amount: Number(reportForm.actual_amount) || 0,
+        new_sign_amount: Number(reportForm.new_sign_amount) || 0,
+        referral_amount: Number(reportForm.referral_amount) || 0,
+        referral_count: Number(reportForm.referral_count) || 0,
+        renewal_amount: Number(reportForm.renewal_amount) || 0,
+        upgrade_amount: Number(reportForm.upgrade_amount) || 0,
+        renewal_count: Number(reportForm.renewal_count) || 0,
+        upgrade_count: Number(reportForm.upgrade_count) || 0
       }
       await api.put(`/reports/${reportForm.id}`, updatePayload)
       ElMessage.success('日报更新成功')
@@ -1368,11 +1453,11 @@ const submitReport = async () => {
       // 创建：映射到 DailyReportCreateRequest
       const todayStr = formatDate(new Date())
       const workDate = reportForm.report_date || todayStr
-      const createPayload = {
-        work_date: workDate,
-        title: (reportForm.summary || `日报 ${workDate}`).slice(0, 200),
-        content: unifiedContent,
-        work_hours: 0.0,
+  const createPayload = {
+    work_date: workDate,
+    title: (reportForm.summary || `日报 ${workDate}`).slice(0, 200),
+    content: unifiedContent,
+    work_hours: 0.0,
         // 始终用系统自动生成的卡片汇总，清除手动输入
         task_progress: reportForm.completed_tasks || '',
         work_summary: reportForm.summary || '',
@@ -1381,11 +1466,19 @@ const submitReport = async () => {
         call_count: Number.isFinite(Number(reportForm.call_count)) ? Number(reportForm.call_count) : 0,
         call_duration: Number.isFinite(Number(reportForm.call_duration)) ? Number(reportForm.call_duration) : 0,
         achievements: undefined,
-        challenges: reportForm.issues_encountered || undefined,
-        tomorrow_plan: reportForm.next_day_plan || undefined,
-        // 结构化快照用于后端持久化（ai_analysis.tasks_snapshot）
-        tasks_snapshot: buildTasksSnapshot()
-      }
+    challenges: reportForm.issues_encountered || undefined,
+    tomorrow_plan: reportForm.next_day_plan || undefined,
+    // 结构化快照用于后端持久化（ai_analysis.tasks_snapshot）
+    tasks_snapshot: buildTasksSnapshot(),
+    actual_amount: Number(reportForm.actual_amount) || 0,
+    new_sign_amount: Number(reportForm.new_sign_amount) || 0,
+    referral_amount: Number(reportForm.referral_amount) || 0,
+    referral_count: Number(reportForm.referral_count) || 0,
+    renewal_amount: Number(reportForm.renewal_amount) || 0,
+    upgrade_amount: Number(reportForm.upgrade_amount) || 0,
+    renewal_count: Number(reportForm.renewal_count) || 0,
+    upgrade_count: Number(reportForm.upgrade_count) || 0
+  }
       // 输出调试信息，便于定位服务端500问题
       console.debug('[Reports] POST /reports payload', createPayload)
       await api.post('/reports', createPayload)

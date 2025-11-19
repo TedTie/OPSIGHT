@@ -230,6 +230,15 @@ create table if not exists public.daily_reports (
   updated_at timestamp with time zone
 );
 
+alter table public.daily_reports add column if not exists actual_amount numeric default 0;
+alter table public.daily_reports add column if not exists new_sign_amount numeric default 0;
+alter table public.daily_reports add column if not exists referral_amount numeric default 0;
+alter table public.daily_reports add column if not exists referral_count int default 0;
+alter table public.daily_reports add column if not exists renewal_amount numeric default 0;
+alter table public.daily_reports add column if not exists upgrade_amount numeric default 0;
+alter table public.daily_reports add column if not exists renewal_count int default 0;
+alter table public.daily_reports add column if not exists upgrade_count int default 0;
+
 create table if not exists public.knowledge_items (
   id bigserial primary key,
   module_type text not null,
