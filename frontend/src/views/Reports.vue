@@ -1453,11 +1453,11 @@ const submitReport = async () => {
       // 创建：映射到 DailyReportCreateRequest
       const todayStr = formatDate(new Date())
       const workDate = reportForm.report_date || todayStr
-  const createPayload = {
-    work_date: workDate,
-    title: (reportForm.summary || `日报 ${workDate}`).slice(0, 200),
-    content: unifiedContent,
-    work_hours: 0.0,
+      const createPayload = {
+        work_date: workDate,
+        title: (reportForm.summary || `日报 ${workDate}`).slice(0, 200),
+        content: unifiedContent,
+        work_hours: 0.0,
         // 始终用系统自动生成的卡片汇总，清除手动输入
         task_progress: reportForm.completed_tasks || '',
         work_summary: reportForm.summary || '',
@@ -1468,17 +1468,18 @@ const submitReport = async () => {
         achievements: undefined,
     challenges: reportForm.issues_encountered || undefined,
     tomorrow_plan: reportForm.next_day_plan || undefined,
-    // 结构化快照用于后端持久化（ai_analysis.tasks_snapshot）
-    tasks_snapshot: buildTasksSnapshot(),
-    actual_amount: Number(reportForm.actual_amount) || 0,
-    new_sign_amount: Number(reportForm.new_sign_amount) || 0,
-    referral_amount: Number(reportForm.referral_amount) || 0,
-    referral_count: Number(reportForm.referral_count) || 0,
-    renewal_amount: Number(reportForm.renewal_amount) || 0,
-    upgrade_amount: Number(reportForm.upgrade_amount) || 0,
-    renewal_count: Number(reportForm.renewal_count) || 0,
-    upgrade_count: Number(reportForm.upgrade_count) || 0
-  }
+        // 结构化快照用于后端持久化（ai_analysis.tasks_snapshot）
+        tasks_snapshot: buildTasksSnapshot(),
+        created_by: authStore.user?.id || undefined,
+        actual_amount: Number(reportForm.actual_amount) || 0,
+        new_sign_amount: Number(reportForm.new_sign_amount) || 0,
+        referral_amount: Number(reportForm.referral_amount) || 0,
+        referral_count: Number(reportForm.referral_count) || 0,
+        renewal_amount: Number(reportForm.renewal_amount) || 0,
+        upgrade_amount: Number(reportForm.upgrade_amount) || 0,
+        renewal_count: Number(reportForm.renewal_count) || 0,
+        upgrade_count: Number(reportForm.upgrade_count) || 0
+      }
       // 输出调试信息，便于定位服务端500问题
       console.debug('[Reports] POST /reports payload', createPayload)
       await api.post('/reports', createPayload)

@@ -259,12 +259,25 @@ serve(async (req: Request): Promise<Response> => {
     const end = u.searchParams.get("end_date") || ""
     const gid = u.searchParams.get("group_id") || ""
     const uid = u.searchParams.get("user_id") || ""
-    let rq = supabase.from("daily_reports").select("id,work_date,title,content,work_hours,task_progress,work_summary,mood_score,efficiency_score,call_count,call_duration,achievements,challenges,tomorrow_plan,ai_analysis,actual_amount,new_sign_amount,referral_amount,referral_count,renewal_amount,upgrade_amount,renewal_count,upgrade_count,created_at,updated_at,created_by")
+    const extended = "id,work_date,title,content,work_hours,task_progress,work_summary,mood_score,efficiency_score,call_count,call_duration,achievements,challenges,tomorrow_plan,ai_analysis,actual_amount,new_sign_amount,referral_amount,referral_count,renewal_amount,upgrade_amount,renewal_count,upgrade_count,created_at,updated_at,created_by"
+    const base = "id,work_date,title,content,work_hours,task_progress,work_summary,mood_score,efficiency_score,call_count,call_duration,achievements,challenges,tomorrow_plan,ai_analysis,created_at,updated_at,created_by"
+    let rq = supabase.from("daily_reports").select(extended)
     if (start) rq = rq.gte("work_date", start)
     if (end) rq = rq.lte("work_date", end)
-    if (uid) rq = rq.eq("created_by", uid)
-    const { data, error } = await rq
-    if (error) return json({ detail: error.message }, 500)
+    if (uid) {
+      try { (rq as any).or && (rq = (rq as any).or(`created_by.eq.${uid},created_by.is.null`)) } catch {}
+      if (!(rq as any).or) rq = rq.eq("created_by", uid)
+    }
+    let { data, error } = await rq
+    if (error) {
+      let rq2 = supabase.from("daily_reports").select(base)
+      if (start) rq2 = rq2.gte("work_date", start)
+      if (end) rq2 = rq2.lte("work_date", end)
+      if (uid) rq2 = rq2.eq("created_by", uid)
+      const r2 = await rq2
+      if (r2.error) return json({ detail: r2.error.message }, 500)
+      data = r2.data
+    }
     let items = data || []
     if (gid) {
       const { data: users } = await supabase.from("user_account").select("id,group_id")
@@ -278,18 +291,56 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if (afterFn === "api/v1/reports" && req.method === "POST") {
-    const payload = await parseBody(req) as Record<string, unknown>
-    const { data, error } = await supabase.from("daily_reports").insert(payload).select("*").single()
-    if (error) return json({ detail: error.message }, 500)
-    return json(data, 201)
+    const raw = await parseBody(req) as Record<string, unknown>
+    const payload: Record<string, unknown> = { ...raw }
+    const ts = (payload as any).tasks_snapshot
+    if (ts) {
+      const ai = (payload as any).ai_analysis || {}
+      ;(payload as any).ai_analysis = { ...ai, tasks_snapshot: ts }
+      delete (payload as any).tasks_snapshot
+    }
+    let ins = await supabase.from("daily_reports").insert(payload).select("*").single()
+    if (ins.error) {
+      const sanitized = { ...payload }
+      delete (sanitized as any).actual_amount
+      delete (sanitized as any).new_sign_amount
+      delete (sanitized as any).referral_amount
+      delete (sanitized as any).referral_count
+      delete (sanitized as any).renewal_amount
+      delete (sanitized as any).upgrade_amount
+      delete (sanitized as any).renewal_count
+      delete (sanitized as any).upgrade_count
+      ins = await supabase.from("daily_reports").insert(sanitized).select("*").single()
+      if (ins.error) return json({ detail: ins.error.message }, 500)
+    }
+    return json(ins.data, 201)
   }
 
   if (/^api\/v1\/reports\/[0-9]+$/.test(afterFn) && req.method === "PUT") {
     const segs = afterFn.split("/")
     const id = Number(segs[3])
-    const payload = await parseBody(req) as Record<string, unknown>
-    const { error } = await supabase.from("daily_reports").update(payload).eq("id", id)
-    if (error) return json({ detail: error.message }, 500)
+    const raw = await parseBody(req) as Record<string, unknown>
+    const payload: Record<string, unknown> = { ...raw }
+    const ts = (payload as any).tasks_snapshot
+    if (ts) {
+      const ai = (payload as any).ai_analysis || {}
+      ;(payload as any).ai_analysis = { ...ai, tasks_snapshot: ts }
+      delete (payload as any).tasks_snapshot
+    }
+    let upd = await supabase.from("daily_reports").update(payload).eq("id", id)
+    if (upd.error) {
+      const sanitized = { ...payload }
+      delete (sanitized as any).actual_amount
+      delete (sanitized as any).new_sign_amount
+      delete (sanitized as any).referral_amount
+      delete (sanitized as any).referral_count
+      delete (sanitized as any).renewal_amount
+      delete (sanitized as any).upgrade_amount
+      delete (sanitized as any).renewal_count
+      delete (sanitized as any).upgrade_count
+      upd = await supabase.from("daily_reports").update(sanitized).eq("id", id)
+      if (upd.error) return json({ detail: upd.error.message }, 500)
+    }
     return json({ success: true })
   }
 
