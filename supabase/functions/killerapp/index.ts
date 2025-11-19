@@ -351,6 +351,32 @@ serve(async (req: Request): Promise<Response> => {
     return json({ success: true })
   }
 
+  if (afterFn.startsWith("api/v1/task-sync/sync-task-to-report") && req.method === "POST") {
+    const payload = await parseBody(req) as { task_id?: number; amount?: number; quantity?: number; remark?: string }
+    const tid = Number(payload.task_id || 0)
+    if (!tid) return json({ detail: "缺少任务ID" }, 422)
+    const { data: tdata, error: terr } = await supabase.from("tasks").select("current_amount,current_quantity").eq("id", tid).single()
+    if (terr) return json({ detail: terr.message }, 500)
+    const curAmt = Number((tdata as any)?.current_amount || 0)
+    const curQty = Number((tdata as any)?.current_quantity || 0)
+    const next: Record<string, unknown> = {}
+    if (typeof payload.amount === "number" && !Number.isNaN(payload.amount) && payload.amount > 0) next.current_amount = curAmt + payload.amount
+    if (typeof payload.quantity === "number" && !Number.isNaN(payload.quantity) && payload.quantity > 0) next.current_quantity = curQty + payload.quantity
+    if (!Object.keys(next).length) return json({ detail: "缺少有效的参与数据" }, 422)
+    const { error } = await supabase.from("tasks").update(next).eq("id", tid)
+    if (error) return json({ detail: error.message }, 500)
+    return json({ success: true })
+  }
+
+  if (/^api\/v1\/task-sync\/sync-task-to-report\/[0-9]+$/.test(afterFn) && req.method === "PUT") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[4])
+    const payload = await parseBody(req) as { is_completed?: boolean }
+    const { error } = await supabase.from("tasks").update({ is_completed: !!payload.is_completed }).eq("id", id)
+    if (error) return json({ detail: error.message }, 500)
+    return json({ success: true })
+  }
+
   if (afterFn === "api/v1/notifications/read-map" && req.method === "GET") {
     return json({ ids: [] })
   }
@@ -705,6 +731,17 @@ serve(async (req: Request): Promise<Response> => {
     const scope = u.searchParams.get("scope") || ""
     const items: any[] = []
     return json({ items, task_id: id, scope, user_id: userId || null })
+  }
+
+  if (/^api\/v1\/tasks\/[0-9]+\/jielong$/.test(afterFn) && req.method === "POST") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[3])
+    const payload = await parseBody(req) as Record<string, unknown>
+    const { data: tdata } = await supabase.from("tasks").select("jielong_current_count").eq("id", id).single()
+    const cur = Number((tdata as any)?.jielong_current_count || 0)
+    const { error } = await supabase.from("tasks").update({ jielong_current_count: cur + 1 }).eq("id", id)
+    if (error) return json({ detail: error.message }, 500)
+    return json({ success: true })
   }
 
   if (/^api\/v1\/tasks\/[0-9]+\/records$/.test(afterFn) && req.method === "GET") {

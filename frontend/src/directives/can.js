@@ -103,30 +103,43 @@ function canDeleteTask(authStore, task) {
 }
 
 function canCompleteTask(authStore, task) {
-  if (task.status === 'completed') {
+  if (task.status === 'completed' || task.status === 'done') {
     return false
   }
   
   const currentUserId = authStore.user?.id
+  const currentGroupId = authStore.user?.group_id
   
-  // 如果任务分配给所有人
-  if (task.assignment_type === 'all') {
+  // 如果任务分配给所有人或未指定分配类型
+  if (task.assignment_type === 'all' || !task.assignment_type) {
     return true
   }
   
   // 如果任务分配给特定用户
-  if (task.assignment_type === 'user' && task.assigned_to === currentUserId) {
-    return true
+  if (task.assignment_type === 'user') {
+    if (task.assigned_user_ids && Array.isArray(task.assigned_user_ids) && currentUserId) {
+      if (task.assigned_user_ids.includes(currentUserId)) return true
+    }
+    if (task.assignee_id && currentUserId && task.assignee_id === currentUserId) return true
   }
   
   // 如果任务分配给特定身份
-  if (task.assignment_type === 'identity' && task.target_identity === authStore.user?.identity_type) {
-    return true
+  if (task.assignment_type === 'identity') {
+    const ti = String(task.target_identity || '').toLowerCase()
+    const ui = String(authStore.user?.identity_type || '').toLowerCase()
+    if (ti && ui && ti === ui) {
+      return true
+    }
+  }
+  return true
   }
   
   // 如果任务分配给用户组
-  if (task.assignment_type === 'group' && task.target_group_id) {
-    return authStore.user?.group_id === task.target_group_id
+  if (task.assignment_type === 'group') {
+    if (task.target_group_id && currentGroupId && currentGroupId === task.target_group_id) return true
+    if (task.assigned_group_ids && Array.isArray(task.assigned_group_ids) && currentGroupId) {
+      if (task.assigned_group_ids.includes(currentGroupId)) return true
+    }
   }
   
   return false

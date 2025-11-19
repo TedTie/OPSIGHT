@@ -89,6 +89,40 @@ create table if not exists public.tasks (
   updated_at timestamp with time zone
 );
 
+alter table public.tasks alter column priority type text using priority::text;
+alter table public.tasks add column if not exists task_type text;
+alter table public.tasks add column if not exists assignment_type text;
+alter table public.tasks alter column assignment_type set default 'all';
+alter table public.tasks add column if not exists assigned_group_ids int[];
+alter table public.tasks add column if not exists assigned_user_ids uuid[];
+alter table public.tasks add column if not exists target_amount numeric;
+alter table public.tasks add column if not exists current_amount numeric default 0;
+alter table public.tasks add column if not exists target_quantity int;
+alter table public.tasks add column if not exists current_quantity int default 0;
+alter table public.tasks add column if not exists jielong_target_count int;
+alter table public.tasks add column if not exists jielong_current_count int default 0;
+alter table public.tasks add column if not exists jielong_config jsonb;
+alter table public.tasks add column if not exists is_completed boolean default false;
+alter table public.tasks add column if not exists due_date timestamp with time zone;
+alter table public.tasks add column if not exists tags jsonb default '[]'::jsonb;
+alter table public.tasks alter column status set default 'pending';
+alter table public.tasks add column if not exists participant_count int default 0;
+alter table public.tasks add column if not exists completed_count int default 0;
+alter table public.tasks add column if not exists target_group_id int;
+alter table public.tasks add column if not exists target_group_name text;
+alter table public.tasks add column if not exists assigned_to_username text;
+alter table public.tasks add column if not exists target_identity text;
+alter table public.tasks add column if not exists completion_note text;
+alter table public.tasks add column if not exists completed_amount numeric;
+alter table public.tasks add column if not exists completed_quantity int;
+
+create index if not exists idx_tasks_assigned_group_ids on public.tasks using gin (assigned_group_ids);
+create index if not exists idx_tasks_assigned_user_ids on public.tasks using gin (assigned_user_ids);
+create index if not exists idx_tasks_tags on public.tasks using gin (tags);
+
+update public.tasks set assignment_type = 'all' where assignment_type is null;
+update public.tasks set status = coalesce(status, 'pending');
+
 alter table public.user_account enable row level security;
 alter table public.groups enable row level security;
 alter table public.admin_metrics enable row level security;
