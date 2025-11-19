@@ -142,15 +142,24 @@ serve(async (req: Request): Promise<Response> => {
     if (gid) q = q.eq("group_id", Number(gid))
     const { data, error } = await q
     if (error) return json({ detail: error.message }, 500)
+
     const bucket: Record<string, { date: string; completed: number }> = {}
+    const statusCounter: Record<string, number> = {}
     for (const t of data || []) {
       const d = new Date((t as any).created_at)
       const key = d.toISOString().slice(0, 10)
       if (!bucket[key]) bucket[key] = { date: key, completed: 0 }
-      if ((t as any).status === "completed") bucket[key].completed += 1
+      const st = String((t as any).status || "unknown")
+      statusCounter[st] = (statusCounter[st] || 0) + 1
+      if (st === "completed") bucket[key].completed += 1
     }
     const taskTrend = Object.values(bucket).sort((a,b)=>a.date<b.date?-1:1)
-    return json({ taskTrend })
+    const taskStatus = [
+      { name: "pending", status: "pending", value: statusCounter["pending"] || 0 },
+      { name: "processing", status: "processing", value: statusCounter["processing"] || 0 },
+      { name: "done", status: "done", value: statusCounter["done"] || statusCounter["completed"] || 0 }
+    ]
+    return json({ taskTrend, taskStatus })
   }
 
   if (afterFn.startsWith("api/v1/analytics/stats") && req.method === "GET") {
@@ -403,6 +412,9 @@ serve(async (req: Request): Promise<Response> => {
     const id = Number(segs[3])
     const { data, error } = await supabase.from("knowledge_items").select("*").eq("id", id).single()
     if (error) return json({ detail: error.message }, 500)
+    const { data: files } = await supabase.from("knowledge_files").select("id,filename,size,mime,url").eq("knowledge_id", id)
+    const mapped = (files || []).map((f: any) => ({ id: f.id, original_filename: f.filename, file_size: f.size, mime_type: f.mime, url: f.url }))
+    ;(data as any).files = mapped
     return json(data)
   }
 
@@ -430,6 +442,31 @@ serve(async (req: Request): Promise<Response> => {
     return json({ success: true })
   }
 
+  if (afterFn.startsWith("api/v1/knowledge-base/upload") && req.method === "POST") {
+    const fd = await req.formData()
+    const file = fd.get("file")
+    const kidRaw = fd.get("knowledge_id")
+    if (!(file instanceof File)) return json({ success: false, message: "缺少文件" }, 400)
+    const kid = kidRaw != null ? Number(String(kidRaw)) : NaN
+    if (!kid || Number.isNaN(kid)) return json({ success: false, message: "缺少知识ID" }, 422)
+    const filename = file.name || "file"
+    const size = file.size || 0
+    const mime = file.type || "application/octet-stream"
+    const ab = await file.arrayBuffer()
+    const u8 = new Uint8Array(ab)
+    let b64 = ""
+    for (let i = 0; i < u8.length; i += 0x8000) {
+      const chunk = u8.subarray(i, i + 0x8000)
+      b64 += String.fromCharCode.apply(null, Array.from(chunk))
+    }
+    const dataUrl = `data:${mime};base64,${btoa(b64)}`
+    const { data, error } = await supabase.from("knowledge_files").insert({ knowledge_id: kid, filename, size, mime, url: dataUrl }).select("*").single()
+    if (error) return json({ success: false, message: error.message }, 500)
+    const f = data as any
+    const file_info = { id: f.id, original_filename: f.filename, file_size: f.size, mime_type: f.mime, url: f.url }
+    return json({ success: true, file_info }, 201)
+  }
+
   if (/^api\/v1\/knowledge-base\/files\/[0-9]+$/.test(afterFn) && req.method === "DELETE") {
     const segs = afterFn.split("/")
     const id = Number(segs[4])
@@ -441,9 +478,20 @@ serve(async (req: Request): Promise<Response> => {
   if (/^api\/v1\/knowledge-base\/files\/[0-9]+\/download$/.test(afterFn) && req.method === "GET") {
     const segs = afterFn.split("/")
     const id = Number(segs[4])
-    const { data } = await supabase.from("knowledge_files").select("url").eq("id", id).single()
+    const { data } = await supabase.from("knowledge_files").select("filename,size,mime,url").eq("id", id).single()
+    const filename = (data as any)?.filename || "file"
+    const size = Number((data as any)?.size || 0)
+    const mime = (data as any)?.mime || "application/octet-stream"
     const url = (data as any)?.url || ""
     if (!url) return json({ detail: "Not Found" }, 404)
+    if (url.startsWith("data:")) {
+      const idx = url.indexOf(",")
+      const b64 = idx >= 0 ? url.slice(idx + 1) : ""
+      const bin = atob(b64)
+      const u8 = new Uint8Array(bin.length)
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i)
+      return new Response(u8, { status: 200, headers: { "Content-Type": mime, "Content-Length": String(u8.length || size), "Content-Disposition": `attachment; filename=\"${filename}\"`, ...corsHeaders } })
+    }
     return new Response(null, { status: 302, headers: { Location: url, ...corsHeaders } })
   }
 
@@ -650,12 +698,53 @@ serve(async (req: Request): Promise<Response> => {
     return json({ id: taskId, ...payload })
   }
 
+  if (/^api\/v1\/tasks\/[0-9]+\/jielong$/.test(afterFn) && req.method === "GET") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[3])
+    const userId = u.searchParams.get("user_id") || ""
+    const scope = u.searchParams.get("scope") || ""
+    const items: any[] = []
+    return json({ items, task_id: id, scope, user_id: userId || null })
+  }
+
+  if (/^api\/v1\/tasks\/[0-9]+\/records$/.test(afterFn) && req.method === "GET") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[3])
+    const userId = u.searchParams.get("user_id") || ""
+    const scope = u.searchParams.get("scope") || ""
+    const items: any[] = []
+    return json({ items, task_id: id, scope, user_id: userId || null })
+  }
+
+  if (/^api\/v1\/tasks\/[0-9]+\/completions$/.test(afterFn) && req.method === "GET") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[3])
+    const userId = u.searchParams.get("user_id") || ""
+    const scope = u.searchParams.get("scope") || ""
+    const items: any[] = []
+    return json({ items, task_id: id, scope, user_id: userId || null })
+  }
+
   if (afterFn.startsWith("api/v1/goals/monthly") && req.method === "GET") {
     const year = Number(u.searchParams.get("year") || new Date().getFullYear())
     const month = Number(u.searchParams.get("month") || (new Date().getMonth() + 1))
     const { data, error } = await supabase.from("monthly_goals").select("id,identity_type,scope,year,month,amount_target,new_sign_target_amount,referral_target_amount,renewal_total_target_amount,upgrade_target_count,renewal_target_count,created_at,updated_at").eq("year", year).eq("month", month)
     if (error) return json({ detail: error.message }, 500)
     return json(data || [])
+  }
+
+  if (afterFn.startsWith("api/v1/reports/stats/summary") && req.method === "GET") {
+    const { data, error } = await supabase.from("daily_reports").select("mood_score")
+    if (error) return json({ detail: error.message }, 500)
+    const arr = (data || []) as any[]
+    const total_reports = arr.length
+    let avg_emotion_score = 0
+    if (total_reports) {
+      const vals = arr.map(r => Number((r as any).mood_score || 0)).filter(v => !Number.isNaN(v))
+      const sum = vals.reduce((a,b)=>a+b, 0)
+      avg_emotion_score = vals.length ? Math.round(sum / vals.length) : 0
+    }
+    return json({ total_reports, avg_emotion_score })
   }
 
   if (afterFn.startsWith("api/v1/goals/monthly") && req.method === "POST") {
@@ -735,12 +824,18 @@ serve(async (req: Request): Promise<Response> => {
     if (!pw || pw.length < 6) return json({ detail: "密码至少 6 位" }, 422)
     const salt = bcrypt.genSaltSync(10)
     const hash = bcrypt.hashSync(pw, salt)
+    let gid = payload.group_id ?? null
+    let gname = payload.group_name ?? null
+    if (gid != null && gname == null) {
+      const { data: g } = await supabase.from("groups").select("name").eq("id", Number(gid)).single()
+      gname = (g as any)?.name ?? null
+    }
     const { data, error } = await supabase.from("user_account").insert({
       username,
       role,
       identity_type: payload.identity_type ?? null,
-      group_id: payload.group_id ?? null,
-      group_name: payload.group_name ?? null,
+      group_id: gid,
+      group_name: gname,
       is_active: payload.is_active ?? true,
       hashed_password: hash
     }).select("*").single()
@@ -757,8 +852,20 @@ serve(async (req: Request): Promise<Response> => {
     if (payload.username !== undefined) base.username = payload.username
     if (payload.role !== undefined) base.role = payload.role
     if (payload.identity_type !== undefined) base.identity_type = payload.identity_type
-    if (payload.group_id !== undefined) base.group_id = payload.group_id
-    if (payload.group_name !== undefined) base.group_name = payload.group_name
+    if (payload.group_id !== undefined) {
+      base.group_id = payload.group_id
+      if (payload.group_name !== undefined) {
+        base.group_name = payload.group_name
+      } else {
+        if (payload.group_id == null) {
+          base.group_name = null
+        } else {
+          const { data: g } = await supabase.from("groups").select("name").eq("id", Number(payload.group_id)).single()
+          base.group_name = (g as any)?.name ?? null
+        }
+      }
+    }
+    if (payload.group_name !== undefined && payload.group_id === undefined) base.group_name = payload.group_name
     if (payload.is_active !== undefined) base.is_active = payload.is_active
     if (payload.password) {
       const pw = String(payload.password)
@@ -859,9 +966,9 @@ serve(async (req: Request): Promise<Response> => {
   if (afterFn.startsWith("api/v1/groups/") && afterFn.endsWith("/members") && req.method === "GET") {
     const segs = afterFn.split("/")
     const gid = Number(segs[3])
-    const { data, error } = await supabase.from("user_account").select("id,username,role,group_id,group_name").eq("group_id", gid)
+    const { data, error } = await supabase.from("user_account").select("id,username,role,group_id,group_name,identity_type").eq("group_id", gid)
     if (error) return json({ detail: error.message }, 500)
-    const members = (data || []).map(m => ({ id: (m as any).id, username: (m as any).username, full_name: (m as any).username, email: `${(m as any).username}@example.com`, role: (m as any).role }))
+    const members = (data || []).map(m => ({ id: (m as any).id, username: (m as any).username, full_name: (m as any).username, email: `${(m as any).username}@example.com`, role: (m as any).role, identity_type: (m as any).identity_type }))
     return json(members)
   }
 
@@ -872,12 +979,17 @@ serve(async (req: Request): Promise<Response> => {
     const body = await parseBody(req) as { user_ids?: number[] }
     const ids = Array.isArray(body.user_ids) ? body.user_ids.map(n => Number(n)).filter(n => !Number.isNaN(n)) : []
     if (!ids.length) return json({ detail: "缺少用户ID" }, 422)
+    let gname: string | null = null
+    {
+      const { data: g } = await supabase.from("groups").select("name").eq("id", gid).single()
+      gname = (g as any)?.name ?? null
+    }
     const updates = ids.map(async (id) => {
       if (hasLegacy) {
-        const r1 = await supabase.from("user_account").update({ group_id: gid }).eq("legacy_id", id)
+        const r1 = await supabase.from("user_account").update({ group_id: gid, group_name: gname }).eq("legacy_id", id)
         if (!r1.error) return r1
       }
-      return await supabase.from("user_account").update({ group_id: gid }).eq("id", id)
+      return await supabase.from("user_account").update({ group_id: gid, group_name: gname }).eq("id", id)
     })
     const results = await Promise.all(updates)
     const err = results.find(r => r.error)?.error
@@ -891,9 +1003,9 @@ serve(async (req: Request): Promise<Response> => {
     const uid = segs[5]
     const hasLegacy = await detectHasLegacyId()
     const { error } = isUUID(uid)
-      ? await supabase.from("user_account").update({ group_id: null }).eq("id", uid).eq("group_id", gid)
+      ? await supabase.from("user_account").update({ group_id: null, group_name: null }).eq("id", uid).eq("group_id", gid)
       : hasLegacy
-        ? await supabase.from("user_account").update({ group_id: null }).eq("legacy_id", Number(uid)).eq("group_id", gid)
+        ? await supabase.from("user_account").update({ group_id: null, group_name: null }).eq("legacy_id", Number(uid)).eq("group_id", gid)
         : { error: { message: "未找到用户或ID不匹配" } as any }
     if (error) return json({ detail: error.message }, 500)
     return json({ success: true })

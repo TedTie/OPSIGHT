@@ -1,0 +1,1 @@
+import{m as o,c as t,o as r,a as n}from"./index-B9ntIOOh.js";const a={viewBox:"0 0 24 24",width:"1.2em",height:"1.2em"};function s(c,e){return r(),t("svg",a,[...e[0]||(e[0]=[n("path",{fill:"none",stroke:"currentColor","stroke-linecap":"round","stroke-linejoin":"round","stroke-width":"2",d:"m5 12l5 5L20 7"},null,-1)])])}const i=o({name:"tabler-check",render:s});export{i as C};

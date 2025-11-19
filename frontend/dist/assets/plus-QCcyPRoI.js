@@ -1,0 +1,1 @@
+import{m as o,c as t,o as r,a as n}from"./index-B9ntIOOh.js";const s={viewBox:"0 0 24 24",width:"1.2em",height:"1.2em"};function a(l,e){return r(),t("svg",s,[...e[0]||(e[0]=[n("path",{fill:"none",stroke:"currentColor","stroke-linecap":"round","stroke-linejoin":"round","stroke-width":"2",d:"M12 5v14m-7-7h14"},null,-1)])])}const c=o({name:"tabler-plus",render:a});export{c as P};

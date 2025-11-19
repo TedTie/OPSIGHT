@@ -208,6 +208,11 @@ create table if not exists public.knowledge_items (
   updated_at timestamp with time zone
 );
 
+alter table public.knowledge_items add column if not exists description text;
+alter table public.knowledge_items add column if not exists is_public boolean default false;
+alter table public.knowledge_items add column if not exists tags jsonb default '[]'::jsonb;
+alter table public.knowledge_items add column if not exists view_count int default 0;
+
 create table if not exists public.knowledge_files (
   id bigserial primary key,
   knowledge_id bigint references public.knowledge_items(id) on delete cascade,
@@ -217,6 +222,8 @@ create table if not exists public.knowledge_files (
   url text,
   created_at timestamp with time zone default now()
 );
+
+create index if not exists idx_knowledge_files_kid on public.knowledge_files(knowledge_id);
 
 create table if not exists public.knowledge_categories (
   id bigserial primary key,
