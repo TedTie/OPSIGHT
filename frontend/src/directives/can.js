@@ -131,8 +131,6 @@ function canCompleteTask(authStore, task) {
       return true
     }
   }
-  return true
-  }
   
   // 如果任务分配给用户组
   if (task.assignment_type === 'group') {
