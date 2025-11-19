@@ -1,9 +1,12 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts"
+import { createClient } from "npm:@supabase/supabase-js@2"
+import bcrypt from "npm:bcryptjs@2.4.3"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, X-Client-Info, X-Requested-With"
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, X-Client-Info, X-Requested-With, Prefer, Accept",
+  "Access-Control-Max-Age": "86400"
 }
 
 let groupsStore: Array<{ id: number; name: string; description?: string; created_at: string }> = []
@@ -21,6 +24,9 @@ async function parseBody(req: Request) {
   try { return JSON.parse(text || "{}") } catch { return {} }
 }
 
+const supabaseEnvUrl = Deno.env.get("SUPABASE_URL") ?? ""
+const supabaseEnvKey = Deno.env.get("SERVICE_ROLE_KEY") ?? (Deno.env.get("SUPABASE_ANON_KEY") ?? "")
+
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
   const u = new URL(req.url)
@@ -28,6 +34,19 @@ serve(async (req: Request): Promise<Response> => {
   // URL pattern: /killerapp/<...>
   const parts = path.split("/")
   const afterFn = parts.slice(1).join("/")
+
+  const projectRef = (u.host.split(".")[0] || "").trim()
+  const computedUrl = projectRef ? `https://${projectRef}.supabase.co` : ""
+  const supabaseUrl = supabaseEnvUrl || computedUrl
+  const supabaseKey = supabaseEnvKey
+  const supabase = createClient(supabaseUrl, supabaseKey)
+
+  const detectHasLegacyId = async (): Promise<boolean> => {
+    const { error } = await supabase.from("user_account").select("legacy_id").limit(1)
+    return !error
+  }
+
+  const isUUID = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 
   const defaultAISettings = { provider: "openrouter", api_key: "", base_url: "https://openrouter.ai/api/v1", model_name: "openai/gpt-5", max_tokens: 2000, temperature: 0.7 }
   const defaultSystemSettings = { system_name: "KillerApp", timezone: "Asia/Shanghai", language: "zh-CN", auto_analysis: true, data_retention_days: 90 }
@@ -60,12 +79,17 @@ serve(async (req: Request): Promise<Response> => {
 
   if ((afterFn.startsWith("auth/login") || afterFn.startsWith("api/v1/auth/login")) && req.method === "POST") {
     const body = await parseBody(req) as { username?: string, password?: string }
-    const username = String(body.username || "").trim().toLowerCase()
+    const username = String(body.username || "").trim()
     const password = String(body.password || "").trim()
-    if (username === "admin" && password.length > 0) {
+    if (username.toLowerCase() === "admin" && password.length > 0) {
       return json({ user: { id: 1, username: "admin", role: "super_admin" } })
     }
-    return json({ detail: "用户名不存在或账户已被禁用" }, 401)
+    const { data, error } = await supabase.from("user_account").select("id,username,role,is_active,hashed_password").eq("username", username).single()
+    if (error || !data) return json({ detail: "用户名不存在或账户已被禁用" }, 401)
+    if (!(data as any).is_active) return json({ detail: "用户名不存在或账户已被禁用" }, 401)
+    const ok = (data as any).hashed_password ? bcrypt.compareSync(password, String((data as any).hashed_password)) : false
+    if (!ok) return json({ detail: "用户名不存在或账户已被禁用" }, 401)
+    return json({ user: { id: (data as any).id, username: (data as any).username, role: (data as any).role } })
   }
 
   if ((afterFn.startsWith("auth/logout") || afterFn.startsWith("api/v1/auth/logout")) && req.method === "POST") {
@@ -73,7 +97,15 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if ((afterFn.startsWith("auth/me") || afterFn.startsWith("api/v1/auth/me")) && req.method === "GET") {
-    return json({ id: 1, username: "admin", role: "super_admin" })
+    const name = String(u.searchParams.get("u") || "").trim()
+    if (!name) return json({ detail: "未认证" }, 401)
+    const { data, error } = await supabase
+      .from("user_account")
+      .select("id,username,role,identity_type,group_id,group_name,is_active,created_at")
+      .eq("username", name)
+      .single()
+    if (error || !data) return json({ detail: "未认证" }, 401)
+    return json(data)
   }
 
   if (afterFn.startsWith("api/v1/analytics/summary") && req.method === "GET") {
@@ -100,72 +132,770 @@ serve(async (req: Request): Promise<Response> => {
     return json({ insight: "AI洞察：当前期间销售节奏稳定，升级贡献占比较高。建议优化转介绍活动以提升转化率。" })
   }
 
+  if (afterFn.startsWith("api/v1/analytics/charts") && req.method === "GET") {
+    const start = u.searchParams.get("start_date") || ""
+    const end = u.searchParams.get("end_date") || ""
+    const gid = u.searchParams.get("group_id") || ""
+    let q = supabase.from("tasks").select("created_at,status,group_id")
+    if (start) q = q.gte("created_at", start)
+    if (end) q = q.lte("created_at", end)
+    if (gid) q = q.eq("group_id", Number(gid))
+    const { data, error } = await q
+    if (error) return json({ detail: error.message }, 500)
+    const bucket: Record<string, { date: string; completed: number }> = {}
+    for (const t of data || []) {
+      const d = new Date((t as any).created_at)
+      const key = d.toISOString().slice(0, 10)
+      if (!bucket[key]) bucket[key] = { date: key, completed: 0 }
+      if ((t as any).status === "completed") bucket[key].completed += 1
+    }
+    const taskTrend = Object.values(bucket).sort((a,b)=>a.date<b.date?-1:1)
+    return json({ taskTrend })
+  }
+
+  if (afterFn.startsWith("api/v1/analytics/stats") && req.method === "GET") {
+    const start = u.searchParams.get("start_date") || ""
+    const end = u.searchParams.get("end_date") || ""
+    const gid = u.searchParams.get("group_id") || ""
+    let tq = supabase.from("tasks").select("status,group_id,updated_at")
+    if (start) tq = tq.gte("updated_at", start)
+    if (end) tq = tq.lte("updated_at", end)
+    if (gid) tq = tq.eq("group_id", Number(gid))
+    const { data: tdata } = await tq
+    const totalTasks = (tdata || []).length
+    const completedTasks = (tdata || []).filter(t => (t as any).status === "completed").length
+    const completionRate = totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0
+    const rq = supabase.from("daily_reports").select("id,work_date")
+    const { data: rdata } = await rq
+    const totalReports = (rdata || []).length
+    return json({ completionRate, totalReports })
+  }
+
+  if (afterFn.startsWith("api/v1/analytics/ranking") && req.method === "GET") {
+    const metric = u.searchParams.get("metric_key") || ""
+    const start = u.searchParams.get("start_date") || ""
+    const end = u.searchParams.get("end_date") || ""
+    const gid = u.searchParams.get("group_id") || ""
+    if (metric === "report_submission_rate") {
+      let uq = supabase.from("daily_reports").select("created_by,work_date")
+      if (start) uq = uq.gte("work_date", start)
+      if (end) uq = uq.lte("work_date", end)
+      const { data } = await uq
+      const counts: Record<string, number> = {}
+      for (const r of data || []) {
+        const uid = String((r as any).created_by || "")
+        if (!uid) continue
+        counts[uid] = (counts[uid] || 0) + 1
+      }
+      let list = Object.entries(counts).map(([user_id, count]) => ({ user_id, count }))
+      if (gid) {
+        const { data: users } = await supabase.from("user_account").select("id,group_id")
+        const allowed = new Set((users || []).filter(u => String((u as any).group_id || "") === String(gid)).map(u => String((u as any).id)))
+        list = list.filter(it => allowed.has(it.user_id))
+      }
+      list.sort((a,b)=>b.count-a.count)
+      const top_10 = list.slice(0,10)
+      const current_user_rank = null
+      return json({ top_10, current_user_rank })
+    }
+    if (metric === "task_completion_rate") {
+      let tq = supabase.from("tasks").select("assignee_id,status,updated_at")
+      if (start) tq = tq.gte("updated_at", start)
+      if (end) tq = tq.lte("updated_at", end)
+      const { data } = await tq
+      const stats: Record<string, { total: number; completed: number }> = {}
+      for (const t of data || []) {
+        const uid = String((t as any).assignee_id || "")
+        if (!uid) continue
+        if (!stats[uid]) stats[uid] = { total: 0, completed: 0 }
+        stats[uid].total += 1
+        if ((t as any).status === "completed") stats[uid].completed += 1
+      }
+      let list = Object.entries(stats).map(([user_id, s]) => ({ user_id, rate: s.total ? Math.round((s.completed/s.total)*100) : 0 }))
+      if (gid) {
+        const { data: users } = await supabase.from("user_account").select("id,group_id")
+        const allowed = new Set((users || []).filter(u => String((u as any).group_id || "") === String(gid)).map(u => String((u as any).id)))
+        list = list.filter(it => allowed.has(it.user_id))
+      }
+      list.sort((a,b)=>b.rate-a.rate)
+      const top_10 = list.slice(0,10)
+      const current_user_rank = null
+      return json({ top_10, current_user_rank })
+    }
+    return json({ top_10: [], current_user_rank: null })
+  }
+
+  if (afterFn === "api/v1/stats/overview" && req.method === "GET") {
+    const { data } = await supabase.from("tasks").select("created_at,updated_at,status")
+    const completed = (data || []).filter(t => (t as any).status === "completed")
+    let totalHours = 0
+    let count = 0
+    for (const t of completed) {
+      const c = new Date((t as any).created_at).getTime()
+      const u2 = new Date((t as any).updated_at || (t as any).created_at).getTime()
+      const diffH = Math.max(0, (u2 - c) / 3600000)
+      totalHours += diffH
+      count += 1
+    }
+    const avgCompletionTime = count ? Math.round(totalHours / count) : 0
+    const totalWorkHours = Math.round(totalHours)
+    const weeklyCompletionRate = 0
+    return json({ avgCompletionTime, totalWorkHours, weeklyCompletionRate })
+  }
+
+  if (afterFn === "api/v1/reports" && req.method === "GET") {
+    const page = Number(u.searchParams.get("page") || "1")
+    const size = Number(u.searchParams.get("size") || "10")
+    const start = u.searchParams.get("start_date") || ""
+    const end = u.searchParams.get("end_date") || ""
+    const gid = u.searchParams.get("group_id") || ""
+    const uid = u.searchParams.get("user_id") || ""
+    let rq = supabase.from("daily_reports").select("id,work_date,title,content,work_hours,task_progress,work_summary,mood_score,efficiency_score,call_count,call_duration,achievements,challenges,tomorrow_plan,ai_analysis,created_at,updated_at,created_by")
+    if (start) rq = rq.gte("work_date", start)
+    if (end) rq = rq.lte("work_date", end)
+    if (uid) rq = rq.eq("created_by", uid)
+    const { data, error } = await rq
+    if (error) return json({ detail: error.message }, 500)
+    let items = data || []
+    if (gid) {
+      const { data: users } = await supabase.from("user_account").select("id,group_id")
+      const set = new Set((users || []).filter(x => String((x as any).group_id || "") === String(gid)).map(x => String((x as any).id)))
+      items = items.filter(it => set.has(String((it as any).created_by || "")))
+    }
+    const total = items.length
+    const startIdx = (page - 1) * size
+    const sliced = items.slice(startIdx, startIdx + size)
+    return json({ items: sliced, total, page, size })
+  }
+
+  if (afterFn === "api/v1/reports" && req.method === "POST") {
+    const payload = await parseBody(req) as Record<string, unknown>
+    const { data, error } = await supabase.from("daily_reports").insert(payload).select("*").single()
+    if (error) return json({ detail: error.message }, 500)
+    return json(data, 201)
+  }
+
+  if (/^api\/v1\/reports\/[0-9]+$/.test(afterFn) && req.method === "PUT") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[3])
+    const payload = await parseBody(req) as Record<string, unknown>
+    const { error } = await supabase.from("daily_reports").update(payload).eq("id", id)
+    if (error) return json({ detail: error.message }, 500)
+    return json({ success: true })
+  }
+
+  if (/^api\/v1\/reports\/[0-9]+$/.test(afterFn) && req.method === "DELETE") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[3])
+    const { error } = await supabase.from("daily_reports").delete().eq("id", id)
+    if (error) return json({ detail: error.message }, 500)
+    return json({ success: true })
+  }
+
+  if (/^api\/v1\/reports\/[0-9]+\/build-snapshot$/.test(afterFn) && req.method === "POST") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[3])
+    const { data } = await supabase.from("daily_reports").select("work_date").eq("id", id).single()
+    const workDate = (data as any)?.work_date || new Date().toISOString().slice(0,10)
+    const { data: tasksData } = await supabase.from("tasks").select("title,status,updated_at,created_at")
+    const comp: any[] = []
+    const due: any[] = []
+    const ong: any[] = []
+    const over: any[] = []
+    for (const t of tasksData || []) {
+      const title = String((t as any).title || "")
+      const status = String((t as any).status || "")
+      const dstr = new Date((t as any).updated_at || (t as any).created_at).toISOString().slice(0,10)
+      if (dstr === workDate) {
+        if (status === "completed") comp.push({ title })
+        else ong.push({ title })
+      }
+    }
+    const snap = { completed_today: comp, due_today: due, ongoing: ong, overdue_uncompleted: over }
+    const ai = { tasks_snapshot: snap }
+    await supabase.from("daily_reports").update({ ai_analysis: ai }).eq("id", id)
+    return json({ ai_analysis: ai })
+  }
+
+  if (afterFn.startsWith("api/v1/task-sync/daily-task-summary") && req.method === "GET") {
+    const date = u.searchParams.get("date") || new Date().toISOString().slice(0,10)
+    const { data } = await supabase.from("tasks").select("title,status,updated_at")
+    const items: any[] = []
+    for (const t of data || []) {
+      const dstr = new Date((t as any).updated_at || new Date()).toISOString().slice(0,10)
+      if (dstr === date && String((t as any).status || "") === "completed") items.push({ title: String((t as any).title || ""), completion_data: "已完成" })
+    }
+    return json(items)
+  }
+
+  if (afterFn.startsWith("api/v1/task-sync/auto-generate-daily-report") && req.method === "POST") {
+    const body = await parseBody(req) as { date?: string }
+    const date = body.date || new Date().toISOString().slice(0,10)
+    const { data } = await supabase.from("tasks").select("title,status,updated_at")
+    const lines: string[] = []
+    for (const t of data || []) {
+      const dstr = new Date((t as any).updated_at || new Date()).toISOString().slice(0,10)
+      if (dstr === date && String((t as any).status || "") === "completed") lines.push(`${String((t as any).title || "")}: 已完成`)
+    }
+    const content = `工作摘要\n自动生成的完成任务列表如下:\n${lines.join("\n")}`
+    await supabase.from("daily_reports").insert({ work_date: date, title: `日报 ${date}`, content, task_progress: lines.join("\n") })
+    return json({ success: true })
+  }
+
+  if (afterFn === "api/v1/notifications/read-map" && req.method === "GET") {
+    return json({ ids: [] })
+  }
+
+  if (afterFn === "api/v1/notifications/read" && req.method === "POST") {
+    const payload = await parseBody(req) as { ids?: number[] }
+    const ids = Array.isArray(payload.ids) ? payload.ids : []
+    if (!ids.length) return json({ success: true })
+    return json({ success: true })
+  }
+
+  if (afterFn.startsWith("api/v1/knowledge-base/search") && req.method === "GET") {
+    const module_type = u.searchParams.get("module_type") || ""
+    const page = Number(u.searchParams.get("page") || "1")
+    const size = Number(u.searchParams.get("size") || "10")
+    const search = u.searchParams.get("search") || ""
+    const category = u.searchParams.get("category") || ""
+    const status = u.searchParams.get("status") || ""
+    let q = supabase.from("knowledge_items").select("*")
+    if (module_type) q = q.eq("module_type", module_type)
+    if (category) q = q.eq("category", category)
+    if (status) q = q.eq("status", status)
+    const { data, error } = await q
+    if (error) return json({ detail: error.message }, 500)
+    let items = data || []
+    if (search) {
+      const s = search.toLowerCase()
+      items = items.filter(it => String((it as any).title || "").toLowerCase().includes(s))
+    }
+    const total = items.length
+    const startIdx = (page - 1) * size
+    const sliced = items.slice(startIdx, startIdx + size)
+    return json({ items: sliced, total, page, size })
+  }
+
+  if (afterFn.startsWith("api/v1/knowledge-base/stats") && req.method === "GET") {
+    const { data } = await supabase.from("knowledge_items").select("module_type")
+    const map: Record<string, number> = {}
+    for (const it of data || []) {
+      const mt = String((it as any).module_type || "")
+      map[mt] = (map[mt] || 0) + 1
+    }
+    const res = Object.entries(map).map(([module_type, count]) => ({ module_type, count }))
+    return json(res)
+  }
+
+  if (afterFn.startsWith("api/v1/knowledge-base/categories") && req.method === "GET") {
+    const module_type = u.searchParams.get("module_type") || ""
+    let q = supabase.from("knowledge_categories").select("name,module_type")
+    if (module_type) q = q.eq("module_type", module_type)
+    const { data, error } = await q
+    if (error) return json({ detail: error.message }, 500)
+    const items = (data || []).map(r => (r as any).name)
+    return json(items)
+  }
+
+  if (/^api\/v1\/knowledge-base\/[0-9]+$/.test(afterFn) && req.method === "GET") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[3])
+    const { data, error } = await supabase.from("knowledge_items").select("*").eq("id", id).single()
+    if (error) return json({ detail: error.message }, 500)
+    return json(data)
+  }
+
+  if (/^api\/v1\/knowledge-base\/$/.test(afterFn) && req.method === "POST") {
+    const payload = await parseBody(req) as Record<string, unknown>
+    const { data, error } = await supabase.from("knowledge_items").insert(payload).select("*").single()
+    if (error) return json({ detail: error.message }, 500)
+    return json(data, 201)
+  }
+
+  if (/^api\/v1\/knowledge-base\/[0-9]+$/.test(afterFn) && req.method === "PUT") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[3])
+    const payload = await parseBody(req) as Record<string, unknown>
+    const { error } = await supabase.from("knowledge_items").update(payload).eq("id", id)
+    if (error) return json({ detail: error.message }, 500)
+    return json({ success: true })
+  }
+
+  if (/^api\/v1\/knowledge-base\/[0-9]+$/.test(afterFn) && req.method === "DELETE") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[3])
+    const { error } = await supabase.from("knowledge_items").delete().eq("id", id)
+    if (error) return json({ detail: error.message }, 500)
+    return json({ success: true })
+  }
+
+  if (/^api\/v1\/knowledge-base\/files\/[0-9]+$/.test(afterFn) && req.method === "DELETE") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[4])
+    const { error } = await supabase.from("knowledge_files").delete().eq("id", id)
+    if (error) return json({ detail: error.message }, 500)
+    return json({ success: true })
+  }
+
+  if (/^api\/v1\/knowledge-base\/files\/[0-9]+\/download$/.test(afterFn) && req.method === "GET") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[4])
+    const { data } = await supabase.from("knowledge_files").select("url").eq("id", id).single()
+    const url = (data as any)?.url || ""
+    if (!url) return json({ detail: "Not Found" }, 404)
+    return new Response(null, { status: 302, headers: { Location: url, ...corsHeaders } })
+  }
+
+  if (afterFn.startsWith("api/v1/ai/agents") && req.method === "GET") {
+    const { data, error } = await supabase.from("ai_agents").select("*")
+    if (error) return json({ detail: error.message }, 500)
+    return json(data || [])
+  }
+
+  if (afterFn === "api/v1/ai/agents" && req.method === "POST") {
+    const payload = await parseBody(req) as Record<string, unknown>
+    const { data, error } = await supabase.from("ai_agents").insert(payload).select("*").single()
+    if (error) return json({ detail: error.message }, 500)
+    return json(data, 201)
+  }
+
+  if (/^api\/v1\/ai\/agents\/[0-9]+$/.test(afterFn) && req.method === "PUT") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[4])
+    const payload = await parseBody(req) as Record<string, unknown>
+    const { error } = await supabase.from("ai_agents").update(payload).eq("id", id)
+    if (error) return json({ detail: error.message }, 500)
+    return json({ success: true })
+  }
+
+  if (/^api\/v1\/ai\/agents\/[0-9]+$/.test(afterFn) && req.method === "DELETE") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[4])
+    const { error } = await supabase.from("ai_agents").delete().eq("id", id)
+    if (error) return json({ detail: error.message }, 500)
+    return json({ success: true })
+  }
+
+  if (afterFn.startsWith("api/v1/ai/functions") && req.method === "GET") {
+    const { data, error } = await supabase.from("ai_functions").select("*")
+    if (error) return json({ detail: error.message }, 500)
+    return json(data || [])
+  }
+
+  if (afterFn === "api/v1/ai/functions" && req.method === "POST") {
+    const payload = await parseBody(req) as Record<string, unknown>
+    const { data, error } = await supabase.from("ai_functions").insert(payload).select("*").single()
+    if (error) return json({ detail: error.message }, 500)
+    return json(data, 201)
+  }
+
+  if (/^api\/v1\/ai\/functions\/[0-9]+$/.test(afterFn) && req.method === "PUT") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[4])
+    const payload = await parseBody(req) as Record<string, unknown>
+    const { error } = await supabase.from("ai_functions").update(payload).eq("id", id)
+    if (error) return json({ detail: error.message }, 500)
+    return json({ success: true })
+  }
+
+  if (afterFn.startsWith("api/v1/ai/features") && req.method === "GET") {
+    const { data, error } = await supabase.from("ai_features").select("*")
+    if (error) return json({ detail: error.message }, 500)
+    return json(data || [])
+  }
+
+  if (afterFn === "api/v1/ai/features" && req.method === "POST") {
+    const payload = await parseBody(req) as Record<string, unknown>
+    const { data, error } = await supabase.from("ai_features").insert(payload).select("*").single()
+    if (error) return json({ detail: error.message }, 500)
+    return json(data, 201)
+  }
+
+  if (/^api\/v1\/ai\/features\/[0-9]+$/.test(afterFn) && req.method === "PUT") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[4])
+    const payload = await parseBody(req) as Record<string, unknown>
+    const { error } = await supabase.from("ai_features").update(payload).eq("id", id)
+    if (error) return json({ detail: error.message }, 500)
+    return json({ success: true })
+  }
+
+  if (afterFn.startsWith("api/v1/ai/stats") && req.method === "GET") {
+    const { count: ac } = await supabase.from("ai_agents").select("id", { count: "exact", head: true })
+    const { count: fc } = await supabase.from("ai_functions").select("id", { count: "exact", head: true })
+    const { count: sc } = await supabase.from("ai_features").select("id", { count: "exact", head: true })
+    return json({ agents: ac || 0, functions: fc || 0, features: sc || 0 })
+  }
+
+  if (afterFn.startsWith("api/v1/ai/answer") && req.method === "POST") {
+    const body = await parseBody(req) as { question?: string }
+    const q = String(body.question || "")
+    let answer = "请在系统中查找对应功能入口。"
+    if (/任务|进度/.test(q)) answer = "任务进度可在任务管理与仪表盘查看。"
+    else if (/日报|提交/.test(q)) answer = "提交日报请进入日报页面，点击新建后填写并提交。"
+    else if (/目标|月度/.test(q)) answer = "月度目标可在分析/目标管理页设置与查看。"
+    return json({ answer })
+  }
+  if (afterFn === "api/v1/tasks" && req.method === "GET") {
+    const page = Number(u.searchParams.get("page") || "1")
+    const size = Number(u.searchParams.get("size") || "10")
+    const start = (page - 1) * size
+    const { data, error } = await supabase.from("tasks").select("*").range(start, start + size - 1)
+    if (error) return json({ detail: error.message }, 500)
+    const { count } = await supabase.from("tasks").select("id", { count: "exact", head: true })
+    return json({ items: data || [], total: count || 0, page, size })
+  }
+
+  if (afterFn === "api/v1/tasks" && req.method === "POST") {
+    const payload = await parseBody(req) as Record<string, unknown>
+    const { data, error } = await supabase.from("tasks").insert(payload).select("*").single()
+    if (error) return json({ detail: error.message }, 500)
+    return json(data, 201)
+  }
+
+  if (/^api\/v1\/tasks\/[0-9]+$/.test(afterFn) && req.method === "GET") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[3])
+    const { data, error } = await supabase.from("tasks").select("*").eq("id", id).single()
+    if (error) return json({ detail: error.message }, 500)
+    return json(data)
+  }
+
+  if (/^api\/v1\/tasks\/[0-9]+$/.test(afterFn) && req.method === "PUT") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[3])
+    const payload = await parseBody(req) as Record<string, unknown>
+    const { error } = await supabase.from("tasks").update(payload).eq("id", id)
+    if (error) return json({ detail: error.message }, 500)
+    return json({ success: true })
+  }
+
+  if (/^api\/v1\/tasks\/[0-9]+$/.test(afterFn) && req.method === "DELETE") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[3])
+    const { error } = await supabase.from("tasks").delete().eq("id", id)
+    if (error) return json({ detail: error.message }, 500)
+    return json({ success: true })
+  }
+
+  if (/^api\/v1\/tasks\/[0-9]+\/status$/.test(afterFn) && req.method === "PUT") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[3])
+    const payload = await parseBody(req) as { status?: string }
+    const { error } = await supabase.from("tasks").update({ status: payload.status }).eq("id", id)
+    if (error) return json({ detail: error.message }, 500)
+    return json({ success: true })
+  }
+
+  if (afterFn === "api/v1/tasks/batch-assign" && req.method === "PUT") {
+    const payload = await parseBody(req) as { task_ids?: number[]; assignee_id?: string }
+    const ids = Array.isArray(payload.task_ids) ? payload.task_ids : []
+    if (!ids.length || !payload.assignee_id) return json({ detail: "缺少任务ID或负责人" }, 422)
+    const { error } = await supabase.from("tasks").update({ assignee_id: payload.assignee_id }).in("id", ids)
+    if (error) return json({ detail: error.message }, 500)
+    return json({ success: true })
+  }
+
+  if (afterFn === "api/v1/tasks/stats" && req.method === "GET") {
+    const { data, error } = await supabase.from("tasks").select("status")
+    if (error) return json({ detail: error.message }, 500)
+    const total = (data || []).length
+    const byStatus: Record<string, number> = {}
+    for (const t of data || []) {
+      const s = (t as any).status || "unknown"
+      byStatus[s] = (byStatus[s] || 0) + 1
+    }
+    return json({ total, by_status: byStatus })
+  }
+
+  if (afterFn === "api/v1/tasks/stats/summary" && req.method === "GET") {
+    const { data, error } = await supabase.from("tasks").select("status")
+    if (error) return json({ detail: error.message }, 500)
+    const total = (data || []).length
+    const completed = (data || []).filter(t => (t as any).status === "completed").length
+    const in_progress = (data || []).filter(t => (t as any).status === "in_progress").length
+    const pending = (data || []).filter(t => (t as any).status === "pending").length
+    return json({ total, completed, in_progress, pending })
+  }
+
+  if (afterFn === "api/v1/tasks/weekly-trend" && req.method === "GET") {
+    const since = new Date()
+    since.setDate(since.getDate() - 30)
+    const { data, error } = await supabase.from("tasks").select("created_at,status").gte("created_at", since.toISOString())
+    if (error) return json({ detail: error.message }, 500)
+    const bucket: Record<string, { created: number; completed: number }> = {}
+    for (const t of data || []) {
+      const d = new Date((t as any).created_at)
+      const key = d.toISOString().slice(0, 10)
+      if (!bucket[key]) bucket[key] = { created: 0, completed: 0 }
+      bucket[key].created += 1
+      if ((t as any).status === "completed") bucket[key].completed += 1
+    }
+    const series = Object.keys(bucket).sort().map(k => ({ date: k, ...bucket[k] }))
+    return json({ series })
+  }
+
+  if (/^api\/v1\/tasks\/[0-9A-Za-z_-]+\/progress$/.test(afterFn) && req.method === "PUT") {
+    const segs = afterFn.split("/")
+    const taskId = segs[3]
+    const payload = await parseBody(req) as any
+    return json({ id: taskId, ...payload })
+  }
+
+  if (/^api\/v1\/tasks\/[0-9A-Za-z_-]+\/participate$/.test(afterFn) && req.method === "POST") {
+    const segs = afterFn.split("/")
+    const taskId = segs[3]
+    const payload = await parseBody(req) as any
+    return json({ id: taskId, ...payload })
+  }
+
   if (afterFn.startsWith("api/v1/goals/monthly") && req.method === "GET") {
-    return json([])
+    const year = Number(u.searchParams.get("year") || new Date().getFullYear())
+    const month = Number(u.searchParams.get("month") || (new Date().getMonth() + 1))
+    const { data, error } = await supabase.from("monthly_goals").select("id,identity_type,scope,year,month,amount_target,new_sign_target_amount,referral_target_amount,renewal_total_target_amount,upgrade_target_count,renewal_target_count,created_at,updated_at").eq("year", year).eq("month", month)
+    if (error) return json({ detail: error.message }, 500)
+    return json(data || [])
   }
 
   if (afterFn.startsWith("api/v1/goals/monthly") && req.method === "POST") {
-    const payload = await parseBody(req) as any
-    return json({ id: Math.floor(Math.random() * 10000), ...payload })
+    const payload = await parseBody(req) as { identity_type: string; scope: string; year: number; month: number; amount_target?: number; new_sign_target_amount?: number; referral_target_amount?: number; renewal_total_target_amount?: number; upgrade_target_count?: number; renewal_target_count?: number }
+    const { data, error } = await supabase.from("monthly_goals").insert(payload).select("*").single()
+    if (error) return json({ detail: error.message }, 500)
+    return json(data, 201)
   }
 
   if (afterFn.startsWith("api/v1/goals/monthly/personal") && req.method === "GET") {
-    return json({ items: [] })
+    const identity_type = String(u.searchParams.get("identity_type") || "").toUpperCase()
+    const group_id = u.searchParams.get("group_id") || undefined
+    const year = u.searchParams.get("year") || undefined
+    const month = u.searchParams.get("month") || undefined
+    let q = supabase.from("personal_monthly_goals").select("id,identity_type,group_id,user_id,year,month,new_sign_target_amount,referral_target_amount,renewal_total_target_amount,upgrade_target_count")
+    if (identity_type) q = q.eq("identity_type", identity_type)
+    if (group_id) q = q.eq("group_id", Number(group_id))
+    if (year) q = q.eq("year", Number(year))
+    if (month) q = q.eq("month", Number(month))
+    const { data, error } = await q
+    if (error) return json({ detail: error.message }, 500)
+    return json({ items: data || [] })
   }
 
   if (afterFn.startsWith("api/v1/goals/monthly/personal") && req.method === "POST") {
     const payload = await parseBody(req) as any
     const arr = Array.isArray(payload) ? payload : (payload.items || [])
-    for (const it of arr) {
-      const identity_type = String(it.identity_type || "").toUpperCase()
-      const group_id = it.group_id ?? ""
-      const year = it.year ?? ""
-      const month = it.month ?? ""
-      const key = `${identity_type}|${group_id}|${year}|${month}`
-      if (!personalGoalsStore[key]) personalGoalsStore[key] = {}
-      const userKey = String(it.user_id)
-      personalGoalsStore[key][userKey] = { identity_type, group_id, user_id: it.user_id, year, month, new_sign_target_amount: Number(it.new_sign_target_amount || 0), referral_target_amount: Number(it.referral_target_amount || 0), renewal_total_target_amount: Number(it.renewal_total_target_amount || 0), upgrade_target_count: Number(it.upgrade_target_count || 0) }
-    }
+    const { error } = await supabase.from("personal_monthly_goals").insert(arr)
+    if (error) return json({ success: false, detail: error.message }, 500)
     return json({ success: true, saved: arr.length })
   }
 
   if (afterFn.startsWith("api/v1/users") && req.method === "GET") {
+    const hasLegacy = await detectHasLegacyId()
     const page = Number(u.searchParams.get("page") || "1")
     const size = Number(u.searchParams.get("size") || "10")
+    const roleParam = u.searchParams.get("role") || ""
+    const isActiveParam = u.searchParams.get("is_active")
+    const searchParam = (u.searchParams.get("search") || "").trim()
+    let selectFields = "id,username,role,group_id,group_name,identity_type,is_active,created_at"
+    if (hasLegacy) selectFields = "id,legacy_id,username,role,group_id,group_name,identity_type,is_active,created_at"
+    let q = supabase.from("user_account").select(selectFields)
+    if (roleParam) q = q.eq("role", roleParam)
+    if (isActiveParam !== null && isActiveParam !== undefined && isActiveParam !== "") {
+      const b = String(isActiveParam).toLowerCase() === "true"
+      q = q.eq("is_active", b)
+    }
+    if (searchParam) q = q.ilike("username", `%${searchParam}%`)
+    const { data, error } = await q
+    if (error) return json({ detail: error.message }, 500)
+    const total = (data || []).length
     const start = (page - 1) * size
-    const users = mockUsers.map(u => ({ id: u.id, username: u.username, full_name: u.username, email: `${u.username}@example.com`, role: "user" }))
-    const paged = users.slice(start, start + size)
-    return json({ items: paged, total: users.length, page, size })
+    const sliced = (data || []).slice(start, start + size)
+    const items = sliced.map(u => ({
+      id: (u as any).id ?? (u as any).legacy_id,
+      legacy_id: (u as any).legacy_id,
+      username: (u as any).username,
+      full_name: (u as any).username,
+      email: `${(u as any).username}@example.com`,
+      role: (u as any).role,
+      identity_type: (u as any).identity_type,
+      group_id: (u as any).group_id,
+      group_name: (u as any).group_name,
+      is_active: (u as any).is_active,
+      created_at: (u as any).created_at,
+      organization: null
+    }))
+    return json({ items, total, page, size })
+  }
+
+  if (afterFn === "api/v1/users" && req.method === "POST") {
+    const payload = await parseBody(req) as { username?: string; role?: string; identity_type?: string; group_id?: number; group_name?: string; is_active?: boolean; password?: string }
+    const username = String(payload.username || "").trim()
+    if (!username || username.length < 2 || username.length > 100) return json({ detail: "用户名长度在 2 到 100 个字符" }, 422)
+    const role = String(payload.role || "user")
+    const pw = String(payload.password || "")
+    if (!pw || pw.length < 6) return json({ detail: "密码至少 6 位" }, 422)
+    const salt = bcrypt.genSaltSync(10)
+    const hash = bcrypt.hashSync(pw, salt)
+    const { data, error } = await supabase.from("user_account").insert({
+      username,
+      role,
+      identity_type: payload.identity_type ?? null,
+      group_id: payload.group_id ?? null,
+      group_name: payload.group_name ?? null,
+      is_active: payload.is_active ?? true,
+      hashed_password: hash
+    }).select("*").single()
+    if (error) return json({ detail: error.message }, 500)
+    return json(data, 201)
+  }
+
+  if (/^api\/v1\/users\/[A-Za-z0-9-]+$/.test(afterFn) && req.method === "PUT") {
+    const hasLegacy = await detectHasLegacyId()
+    const segs = afterFn.split("/")
+    const uid = segs[3] || segs[2]
+    const payload = await parseBody(req) as { username?: string; role?: string; identity_type?: string; group_id?: number; group_name?: string; is_active?: boolean; password?: string }
+    const base: Record<string, any> = {}
+    if (payload.username !== undefined) base.username = payload.username
+    if (payload.role !== undefined) base.role = payload.role
+    if (payload.identity_type !== undefined) base.identity_type = payload.identity_type
+    if (payload.group_id !== undefined) base.group_id = payload.group_id
+    if (payload.group_name !== undefined) base.group_name = payload.group_name
+    if (payload.is_active !== undefined) base.is_active = payload.is_active
+    if (payload.password) {
+      const pw = String(payload.password)
+      if (pw.length < 6) return json({ detail: "密码至少 6 位" }, 422)
+      const salt = bcrypt.genSaltSync(10)
+      base.hashed_password = bcrypt.hashSync(pw, salt)
+    }
+    const useUUID = isUUID(uid)
+    const isNum = !Number.isNaN(Number(uid))
+    console.log("[users:PUT] incoming", { uid, useUUID, isNum, hasPassword: !!payload.password, keys: Object.keys(base) })
+    let affected = 0
+    let hp: any = null
+    if (useUUID) {
+      const { data, error } = await supabase.from("user_account").update(base).eq("id", uid).select("id,username,is_active,hashed_password")
+      if (error) {
+        console.error("[users:PUT] update uuid error", error)
+        return json({ detail: error.message }, 500)
+      }
+      affected = Array.isArray(data) ? data.length : (data ? 1 : 0)
+      hp = Array.isArray(data) ? (data[0] as any)?.hashed_password : (data as any)?.hashed_password
+    } else if (isNum) {
+      let lastErr: any = null
+      if (hasLegacy) {
+        const r1 = await supabase.from("user_account").update(base).eq("legacy_id", Number(uid)).select("id,username,is_active,hashed_password")
+        if (!r1.error) {
+          affected = Array.isArray(r1.data) ? r1.data.length : (r1.data ? 1 : 0)
+          hp = Array.isArray(r1.data) ? (r1.data[0] as any)?.hashed_password : (r1.data as any)?.hashed_password
+        } else {
+          lastErr = r1.error
+        }
+      }
+      if (!affected && payload.username) {
+        const rU = await supabase.from("user_account").update(base).eq("username", String(payload.username)).select("id,username,is_active,hashed_password")
+        if (!rU.error) {
+          affected = Array.isArray(rU.data) ? rU.data.length : (rU.data ? 1 : 0)
+          hp = Array.isArray(rU.data) ? (rU.data[0] as any)?.hashed_password : (rU.data as any)?.hashed_password
+        }
+      }
+      if (!affected) {
+        const r2 = await supabase.from("user_account").update(base).eq("id", Number(uid)).select("id,username,is_active,hashed_password")
+        if (!r2.error) {
+          affected = Array.isArray(r2.data) ? r2.data.length : (r2.data ? 1 : 0)
+          hp = Array.isArray(r2.data) ? (r2.data[0] as any)?.hashed_password : (r2.data as any)?.hashed_password
+        } else {
+          console.warn("[users:PUT] numeric id update error", r2.error)
+        }
+      }
+      if (!affected && lastErr && !hasLegacy) {
+        console.error("[users:PUT] update error", lastErr)
+        return json({ detail: lastErr.message }, 500)
+      }
+    } else {
+      const { data, error } = await supabase.from("user_account").update(base).eq("id", uid).select("id,username,is_active,hashed_password")
+      if (error) {
+        console.error("[users:PUT] update string id error", error)
+        return json({ detail: error.message }, 500)
+      }
+      affected = Array.isArray(data) ? data.length : (data ? 1 : 0)
+      hp = Array.isArray(data) ? (data[0] as any)?.hashed_password : (data as any)?.hashed_password
+    }
+    console.log("[users:PUT] updated", { affected, hasHashedPassword: !!hp })
+    if (!affected) return json({ detail: "未找到用户或ID不匹配" }, 404)
+    return json({ success: true, affected })
+  }
+
+  if (/^api\/v1\/users\/[A-Za-z0-9-]+$/.test(afterFn) && req.method === "DELETE") {
+    const hasLegacy = await detectHasLegacyId()
+    const segs = afterFn.split("/")
+    const uid = segs[3] || segs[2]
+    const isNum = !Number.isNaN(Number(uid))
+    let delErr: any = null
+    let delAffected = 0
+    if (isUUID(uid)) {
+      const { error } = await supabase.from("user_account").delete().eq("id", uid)
+      delErr = error
+      delAffected = error ? 0 : 1
+    } else if (isNum) {
+      if (hasLegacy) {
+        const { error } = await supabase.from("user_account").delete().eq("legacy_id", Number(uid))
+        if (!error) delAffected = 1
+        else delErr = error
+      }
+      if (!delAffected) {
+        const { error } = await supabase.from("user_account").delete().eq("id", Number(uid))
+        if (!error) delAffected = 1
+        else delErr = error
+      }
+    } else {
+      const { error } = await supabase.from("user_account").delete().eq("id", uid)
+      delErr = error
+      delAffected = error ? 0 : 1
+    }
+    if (delErr) return json({ detail: delErr.message }, 500)
+    if (!delAffected) return json({ detail: "未找到用户或ID不匹配" }, 404)
+    return json({ success: true })
   }
 
   if (afterFn.startsWith("api/v1/groups/") && afterFn.endsWith("/members") && req.method === "GET") {
     const segs = afterFn.split("/")
-    const gid = Number(segs[2])
-    const members = (groupMembersStore[gid] || [])
-      .map(uid => mockUsers.find(m => m.id === uid))
-      .filter(Boolean)
-      .map(m => ({ id: m!.id, username: m!.username, full_name: m!.username, email: `${m!.username}@example.com`, role: "user" }))
+    const gid = Number(segs[3])
+    const { data, error } = await supabase.from("user_account").select("id,username,role,group_id,group_name").eq("group_id", gid)
+    if (error) return json({ detail: error.message }, 500)
+    const members = (data || []).map(m => ({ id: (m as any).id, username: (m as any).username, full_name: (m as any).username, email: `${(m as any).username}@example.com`, role: (m as any).role }))
     return json(members)
   }
 
   if (afterFn.startsWith("api/v1/groups/") && afterFn.endsWith("/members") && req.method === "POST") {
+    const hasLegacy = await detectHasLegacyId()
     const segs = afterFn.split("/")
-    const gid = Number(segs[2])
+    const gid = Number(segs[3])
     const body = await parseBody(req) as { user_ids?: number[] }
     const ids = Array.isArray(body.user_ids) ? body.user_ids.map(n => Number(n)).filter(n => !Number.isNaN(n)) : []
     if (!ids.length) return json({ detail: "缺少用户ID" }, 422)
-    if (!groupMembersStore[gid]) groupMembersStore[gid] = []
-    const set = new Set(groupMembersStore[gid])
-    ids.forEach(id => set.add(id))
-    groupMembersStore[gid] = Array.from(set)
+    const updates = ids.map(async (id) => {
+      if (hasLegacy) {
+        const r1 = await supabase.from("user_account").update({ group_id: gid }).eq("legacy_id", id)
+        if (!r1.error) return r1
+      }
+      return await supabase.from("user_account").update({ group_id: gid }).eq("id", id)
+    })
+    const results = await Promise.all(updates)
+    const err = results.find(r => r.error)?.error
+    if (err) return json({ detail: err.message }, 500)
     return json({ success: true })
   }
 
   if (afterFn.startsWith("api/v1/groups/") && /\/members\/[0-9]+$/.test(afterFn) && req.method === "DELETE") {
     const segs = afterFn.split("/")
-    const gid = Number(segs[2])
-    const uid = Number(segs[4])
-    if (groupMembersStore[gid]) groupMembersStore[gid] = groupMembersStore[gid].filter(id => id !== uid)
+    const gid = Number(segs[3])
+    const uid = segs[5]
+    const hasLegacy = await detectHasLegacyId()
+    const { error } = isUUID(uid)
+      ? await supabase.from("user_account").update({ group_id: null }).eq("id", uid).eq("group_id", gid)
+      : hasLegacy
+        ? await supabase.from("user_account").update({ group_id: null }).eq("legacy_id", Number(uid)).eq("group_id", gid)
+        : { error: { message: "未找到用户或ID不匹配" } as any }
+    if (error) return json({ detail: error.message }, 500)
     return json({ success: true })
   }
 
@@ -173,9 +903,11 @@ serve(async (req: Request): Promise<Response> => {
     const page = Number(u.searchParams.get("page") || "1")
     const size = Number(u.searchParams.get("size") || "10")
     const search = String(u.searchParams.get("search") || "").trim().toLowerCase()
-    const filtered = groupsStore.filter(g => !search || g.name.toLowerCase().includes(search))
+    const { data, error } = await supabase.from("groups").select("id,name,description,created_at")
+    if (error) return json({ detail: error.message }, 500)
+    const filtered = (data || []).filter(g => !search || (g.name || "").toLowerCase().includes(search))
     const start = (page - 1) * size
-    const items = filtered.slice(start, start + size).map(g => ({ ...g, member_count: (groupMembersStore[g.id] || []).length }))
+    const items = filtered.slice(start, start + size)
     return json({ items, total: filtered.length, page, size })
   }
 
@@ -183,90 +915,108 @@ serve(async (req: Request): Promise<Response> => {
     const payload = await parseBody(req) as { name?: string; description?: string }
     const name = String(payload.name || "").trim()
     if (!name || name.length < 2 || name.length > 100) return json({ detail: "组织名称长度在 2 到 100 个字符" }, 422)
-    const g = { id: nextGroupId++, name, description: String(payload.description || ""), created_at: new Date().toISOString() }
-    groupsStore.push(g)
-    return json(g, 201)
+    const { data, error } = await supabase.from("groups").insert({ name, description: String(payload.description || "") }).select("*").single()
+    if (error) return json({ detail: error.message }, 500)
+    return json(data, 201)
   }
 
   if (/^api\/v1\/groups\/[0-9]+$/.test(afterFn) && req.method === "PUT") {
     const segs = afterFn.split("/")
-    const gid = Number(segs[2])
-    const idx = groupsStore.findIndex(g => g.id === gid)
-    if (idx < 0) return json({ detail: "组织不存在" }, 404)
+    const gid = Number(segs[3])
     const payload = await parseBody(req) as { name?: string; description?: string }
-    const name = payload.name === undefined ? groupsStore[idx].name : String(payload.name || "").trim()
+    const name = String(payload.name || "").trim()
     if (!name || name.length < 2 || name.length > 100) return json({ detail: "组织名称长度在 2 到 100 个字符" }, 422)
-    groupsStore[idx] = { ...groupsStore[idx], name, description: String(payload.description || groupsStore[idx].description || "") }
+    const { error } = await supabase.from("groups").update({ name, description: String(payload.description || "") }).eq("id", gid)
+    if (error) return json({ detail: error.message }, 500)
     return json({ success: true })
   }
 
   if (/^api\/v1\/groups\/[0-9]+$/.test(afterFn) && req.method === "DELETE") {
     const segs = afterFn.split("/")
-    const gid = Number(segs[2])
-    groupsStore = groupsStore.filter(g => g.id !== gid)
-    delete groupMembersStore[gid]
+    const gid = Number(segs[3])
+    const { error } = await supabase.from("groups").delete().eq("id", gid)
+    if (error) return json({ detail: error.message }, 500)
     return json({ success: true })
   }
 
   if (afterFn.startsWith("api/v1/admin/metrics") && req.method === "GET") {
-    const items = [
-      { id: 1, key: "period_sales_amount", name: "期间销售总额", is_active: true, default_roles: ["CC", "SS"] },
-      { id: 2, key: "task_completion_rate", name: "任务完成率", is_active: true, default_roles: ["CC", "SS", "LP"] },
-      { id: 3, key: "report_submission_rate", name: "日报提交率", is_active: true, default_roles: ["CC", "SS", "LP"] }
-    ]
-    return json(items)
+    const { data, error } = await supabase.from("admin_metrics").select("id,key,name,is_active,default_roles")
+    if (error) return json({ detail: error.message }, 500)
+    return json(data ?? [])
   }
 
   if (afterFn.startsWith("api/v1/admin/metrics/") && req.method === "PUT") {
+    const segs = afterFn.split("/")
+    const key = segs[3]
+    const payload = await parseBody(req) as { name?: string; is_active?: boolean; default_roles?: string[] }
+    const { error } = await supabase.from("admin_metrics").update({
+      name: payload.name,
+      is_active: payload.is_active,
+      default_roles: payload.default_roles
+    }).eq("key", key)
+    if (error) return json({ detail: error.message }, 500)
     return json({ success: true })
   }
 
   if (afterFn.startsWith("api/v1/settings/ai") && req.method === "GET") {
-    return json(aiSettingsStore)
+    const { data, error } = await supabase.from("settings_ai").select("provider,api_key,base_url,model_name,max_tokens,temperature").eq("id", 1).single()
+    if (error) return json({ detail: error.message }, 500)
+    return json(data)
   }
 
   if (afterFn.startsWith("api/v1/settings/ai") && req.method === "PUT") {
-    const payload = await parseBody(req) as any
-    aiSettingsStore = {
-      ...aiSettingsStore,
-      provider: payload.provider ?? aiSettingsStore.provider,
-      api_key: payload.api_key ?? aiSettingsStore.api_key,
-      base_url: payload.base_url ?? aiSettingsStore.base_url,
-      model_name: payload.model_name ?? aiSettingsStore.model_name,
-      max_tokens: Number(payload.max_tokens ?? aiSettingsStore.max_tokens),
-      temperature: Number(payload.temperature ?? aiSettingsStore.temperature)
-    }
+    const payload = await parseBody(req) as { provider?: string; api_key?: string; base_url?: string; model_name?: string; max_tokens?: number; temperature?: number }
+    const { error } = await supabase.from("settings_ai").update({
+      provider: payload.provider,
+      api_key: payload.api_key,
+      base_url: payload.base_url,
+      model_name: payload.model_name,
+      max_tokens: payload.max_tokens,
+      temperature: payload.temperature
+    }).eq("id", 1)
+    if (error) return json({ detail: error.message }, 500)
     return json({ success: true })
   }
 
   if (afterFn.startsWith("api/v1/settings/system") && req.method === "GET") {
-    return json(systemSettingsStore)
+    const { data, error } = await supabase.from("settings_system").select("system_name,timezone,language,auto_analysis,data_retention_days").eq("id", 1).single()
+    if (error) return json({ detail: error.message }, 500)
+    return json(data)
   }
 
   if (afterFn.startsWith("api/v1/settings/system") && req.method === "PUT") {
-    const payload = await parseBody(req) as any
-    systemSettingsStore = {
-      ...systemSettingsStore,
-      system_name: payload.system_name ?? systemSettingsStore.system_name,
-      timezone: payload.timezone ?? systemSettingsStore.timezone,
-      language: payload.language ?? systemSettingsStore.language,
-      auto_analysis: payload.auto_analysis ?? systemSettingsStore.auto_analysis,
-      data_retention_days: Number(payload.data_retention_days ?? systemSettingsStore.data_retention_days)
-    }
+    const payload = await parseBody(req) as { system_name?: string; timezone?: string; language?: string; auto_analysis?: boolean; data_retention_days?: number }
+    const { error } = await supabase.from("settings_system").update({
+      system_name: payload.system_name,
+      timezone: payload.timezone,
+      language: payload.language,
+      auto_analysis: payload.auto_analysis,
+      data_retention_days: payload.data_retention_days
+    }).eq("id", 1)
+    if (error) return json({ detail: error.message }, 500)
     return json({ success: true })
   }
 
   if (afterFn.startsWith("api/v1/settings/ai/test") && req.method === "POST") {
-    const payload = await parseBody(req) as any
-    const hasKey = !!(payload.api_key || aiSettingsStore.api_key)
-    const provider = (payload.provider || aiSettingsStore.provider || "").toLowerCase()
-    const ok = hasKey && ["openrouter", "openai", "claude"].includes(provider)
-    const responseText = ok ? "服务可用，认证通过" : "缺少有效密钥或不支持的提供商"
-    return json({ success: ok, response: responseText, message: ok ? "OK" : "Failed" })
+    const payload = await parseBody(req) as { provider?: string; api_key?: string; base_url?: string }
+    const provider = (payload.provider || "").toLowerCase()
+    const url = payload.base_url || "https://openrouter.ai/api/v1"
+    const key = payload.api_key || ""
+    if (!provider || !key) return json({ success: false, message: "Invalid config" }, 400)
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${key}` } })
+      return json({ success: res.status < 400, response: res.statusText, message: res.ok ? "OK" : "Failed" })
+    } catch {
+      return json({ success: false, message: "Failed" })
+    }
   }
 
   if (afterFn.startsWith("api/v1/settings/export") && req.method === "GET") {
-    return json({ message: "数据导出完成（模拟）" })
+    const { data: ai } = await supabase.from("settings_ai").select("*").eq("id", 1).single()
+    const { data: sys } = await supabase.from("settings_system").select("*").eq("id", 1).single()
+    const { data: metrics } = await supabase.from("admin_metrics").select("*")
+    const { data: groups } = await supabase.from("groups").select("*")
+    return json({ ai, system: sys, metrics, groups })
   }
 
   if (afterFn.startsWith("api/v1/settings/clear-cache") && req.method === "POST") {
@@ -274,8 +1024,8 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if (afterFn.startsWith("api/v1/settings/reset") && req.method === "POST") {
-    aiSettingsStore = { ...defaultAISettings }
-    systemSettingsStore = { ...defaultSystemSettings }
+    await supabase.from("settings_ai").update(defaultAISettings).eq("id", 1)
+    await supabase.from("settings_system").update(defaultSystemSettings).eq("id", 1)
     return json({ success: true })
   }
 

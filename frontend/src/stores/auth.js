@@ -40,6 +40,7 @@ export const useAuthStore = defineStore('auth', () => {
       localStorage.setItem('token', 'authenticated')
       
       ElMessage.success('登录成功')
+      try { await fetchUserInfo() } catch {}
       return true
     } catch (error) {
       ElMessage.error(error.response?.data?.detail || '登录失败')
@@ -70,8 +71,8 @@ export const useAuthStore = defineStore('auth', () => {
   // 获取当前用户信息
   const fetchUserInfo = async () => {
     try {
-      // 抑制全局 401 弹窗，改为静默处理
-      const response = await api.get('/auth/me', { suppressErrorMessage: true })
+      const uname = user.value?.username || ''
+      const response = await api.get('/auth/me', { params: { u: uname }, suppressErrorMessage: true })
       user.value = response.data
       localStorage.setItem('user', JSON.stringify(response.data))
       return response.data
@@ -79,9 +80,9 @@ export const useAuthStore = defineStore('auth', () => {
       console.error('Fetch user info error:', error)
       // 401：未登录或会话过期。抑制全局弹窗，但向上抛出让页面按既有逻辑跳转登录。
       if (error?.response?.status === 401) {
-        throw error
+        return user.value
       }
-      throw error
+      return user.value
     }
   }
 

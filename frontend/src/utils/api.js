@@ -77,11 +77,16 @@ api.interceptors.response.use(
               break
             }
 
+            // /auth/me 或显式 suppress：不触发全局登出与重定向
+            if (reqUrl.includes('/auth/me') || suppress) {
+              break
+            }
+
             // 其他接口401：视为会话过期，清除并回到登录页
             localStorage.removeItem('token')
             localStorage.removeItem('user')
             router.push('/login')
-            if (!suppress) ElMessage.error('登录已过期，请重新登录')
+            ElMessage.error('登录已过期，请重新登录')
           }
           break
         case 403:

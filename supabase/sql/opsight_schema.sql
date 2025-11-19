@@ -75,6 +75,20 @@ create table if not exists public.personal_monthly_goals (
   created_at timestamp with time zone default now()
 );
 
+create table if not exists public.tasks (
+  id bigserial primary key,
+  title text not null,
+  description text,
+  type text,
+  status text,
+  priority int,
+  assignee_id uuid references public.user_account(id) on delete set null,
+  group_id int,
+  identity_type text,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone
+);
+
 alter table public.user_account enable row level security;
 alter table public.groups enable row level security;
 alter table public.admin_metrics enable row level security;
@@ -82,28 +96,52 @@ alter table public.settings_ai enable row level security;
 alter table public.settings_system enable row level security;
 alter table public.monthly_goals enable row level security;
 alter table public.personal_monthly_goals enable row level security;
+alter table public.tasks enable row level security;
+alter table public.user_account add column if not exists legacy_id bigserial unique;
+update public.user_account set legacy_id = nextval('public.user_account_legacy_id_seq') where legacy_id is null;
+alter table public.user_account add column if not exists is_active boolean default true;
+update public.user_account set is_active = true where is_active is null;
+alter table public.user_account add column if not exists hashed_password text;
 
+drop policy if exists user_account_select_authenticated on public.user_account;
+drop policy if exists user_account_insert_admin on public.user_account;
+drop policy if exists user_account_update_admin on public.user_account;
 create policy user_account_select_authenticated on public.user_account for select using (auth.uid() is not null);
 create policy user_account_insert_admin on public.user_account for insert with check (exists (select 1 from public.user_account ua where ua.auth_uid = auth.uid() and ua.role in ('admin','super_admin')));
 create policy user_account_update_admin on public.user_account for update using (exists (select 1 from public.user_account ua where ua.auth_uid = auth.uid() and ua.role in ('admin','super_admin')));
 
+drop policy if exists groups_select_authenticated on public.groups;
+drop policy if exists groups_write_admin on public.groups;
 create policy groups_select_authenticated on public.groups for select using (auth.uid() is not null);
 create policy groups_write_admin on public.groups for all using (exists (select 1 from public.user_account ua where ua.auth_uid = auth.uid() and ua.role in ('admin','super_admin'))) with check (true);
 
+drop policy if exists admin_metrics_select_authenticated on public.admin_metrics;
+drop policy if exists admin_metrics_write_admin on public.admin_metrics;
 create policy admin_metrics_select_authenticated on public.admin_metrics for select using (auth.uid() is not null);
 create policy admin_metrics_write_admin on public.admin_metrics for all using (exists (select 1 from public.user_account ua where ua.auth_uid = auth.uid() and ua.role in ('admin','super_admin'))) with check (true);
 
+drop policy if exists settings_ai_select_authenticated on public.settings_ai;
+drop policy if exists settings_ai_update_admin on public.settings_ai;
+drop policy if exists settings_ai_insert_admin on public.settings_ai;
 create policy settings_ai_select_authenticated on public.settings_ai for select using (auth.uid() is not null);
 create policy settings_ai_update_admin on public.settings_ai for update using (exists (select 1 from public.user_account ua where ua.auth_uid = auth.uid() and ua.role in ('admin','super_admin')));
 create policy settings_ai_insert_admin on public.settings_ai for insert with check (exists (select 1 from public.user_account ua where ua.auth_uid = auth.uid() and ua.role in ('admin','super_admin')));
 
+drop policy if exists settings_system_select_authenticated on public.settings_system;
+drop policy if exists settings_system_update_admin on public.settings_system;
+drop policy if exists settings_system_insert_admin on public.settings_system;
 create policy settings_system_select_authenticated on public.settings_system for select using (auth.uid() is not null);
 create policy settings_system_update_admin on public.settings_system for update using (exists (select 1 from public.user_account ua where ua.auth_uid = auth.uid() and ua.role in ('admin','super_admin')));
 create policy settings_system_insert_admin on public.settings_system for insert with check (exists (select 1 from public.user_account ua where ua.auth_uid = auth.uid() and ua.role in ('admin','super_admin')));
 
+drop policy if exists monthly_goals_select_authenticated on public.monthly_goals;
+drop policy if exists monthly_goals_write_admin on public.monthly_goals;
 create policy monthly_goals_select_authenticated on public.monthly_goals for select using (auth.uid() is not null);
 create policy monthly_goals_write_admin on public.monthly_goals for all using (exists (select 1 from public.user_account ua where ua.auth_uid = auth.uid() and ua.role in ('admin','super_admin'))) with check (true);
 
+drop policy if exists personal_goals_select_authenticated on public.personal_monthly_goals;
+drop policy if exists personal_goals_insert_self_or_admin on public.personal_monthly_goals;
+drop policy if exists personal_goals_update_self_or_admin on public.personal_monthly_goals;
 create policy personal_goals_select_authenticated on public.personal_monthly_goals for select using (auth.uid() is not null);
 create policy personal_goals_insert_self_or_admin on public.personal_monthly_goals for insert with check (
   exists (select 1 from public.user_account ua where ua.auth_uid = auth.uid() and (ua.role in ('admin','super_admin') or ua.id = user_id))
@@ -111,6 +149,13 @@ create policy personal_goals_insert_self_or_admin on public.personal_monthly_goa
 create policy personal_goals_update_self_or_admin on public.personal_monthly_goals for update using (
   exists (select 1 from public.user_account ua where ua.auth_uid = auth.uid() and (ua.role in ('admin','super_admin') or ua.id = user_id))
 );
+
+drop policy if exists tasks_select_authenticated on public.tasks;
+drop policy if exists tasks_write_admin on public.tasks;
+create policy tasks_select_authenticated on public.tasks for select using (auth.uid() is not null);
+create policy tasks_write_admin on public.tasks for all using (
+  exists (select 1 from public.user_account ua where ua.auth_uid = auth.uid() and ua.role in ('admin','super_admin'))
+) with check (true);
 
 insert into public.settings_ai (id, provider, api_key, base_url, model_name, max_tokens, temperature)
 values (1, 'openrouter', '', 'https://openrouter.ai/api/v1', 'openai/gpt-5', 2000, 0.7)
@@ -129,3 +174,174 @@ on conflict (key) do nothing;
 insert into public.groups (name, description) values
 ('销售一组',''),('教务一组',''),('产品一组','')
 on conflict (name) do nothing;
+
+create table if not exists public.daily_reports (
+  id bigserial primary key,
+  work_date date not null,
+  title text not null,
+  content text,
+  work_hours numeric,
+  task_progress text,
+  work_summary text,
+  mood_score int,
+  efficiency_score int,
+  call_count int,
+  call_duration int,
+  achievements text,
+  challenges text,
+  tomorrow_plan text,
+  ai_analysis jsonb,
+  created_by uuid references public.user_account(id) on delete set null,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone
+);
+
+create table if not exists public.knowledge_items (
+  id bigserial primary key,
+  module_type text not null,
+  title text not null,
+  content text,
+  category text,
+  status text,
+  created_by uuid references public.user_account(id) on delete set null,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone
+);
+
+create table if not exists public.knowledge_files (
+  id bigserial primary key,
+  knowledge_id bigint references public.knowledge_items(id) on delete cascade,
+  filename text,
+  size bigint,
+  mime text,
+  url text,
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists public.knowledge_categories (
+  id bigserial primary key,
+  module_type text not null,
+  name text not null,
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists public.ai_agents (
+  id bigserial primary key,
+  name text not null,
+  description text,
+  is_active boolean default true,
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists public.ai_functions (
+  id bigserial primary key,
+  name text not null,
+  description text,
+  config jsonb,
+  is_active boolean default true,
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists public.ai_features (
+  id bigserial primary key,
+  key text unique not null,
+  name text not null,
+  is_active boolean default true,
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists public.notifications (
+  id bigserial primary key,
+  title text not null,
+  content text,
+  group_id int,
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists public.notification_reads (
+  id bigserial primary key,
+  notification_id bigint references public.notifications(id) on delete cascade,
+  user_id uuid references public.user_account(id) on delete cascade,
+  created_at timestamp with time zone default now()
+);
+
+alter table public.daily_reports enable row level security;
+alter table public.knowledge_items enable row level security;
+alter table public.knowledge_files enable row level security;
+alter table public.knowledge_categories enable row level security;
+alter table public.ai_agents enable row level security;
+alter table public.ai_functions enable row level security;
+alter table public.ai_features enable row level security;
+alter table public.notifications enable row level security;
+alter table public.notification_reads enable row level security;
+
+drop policy if exists daily_reports_select_authenticated on public.daily_reports;
+drop policy if exists daily_reports_write_self_or_admin on public.daily_reports;
+create policy daily_reports_select_authenticated on public.daily_reports for select using (auth.uid() is not null);
+create policy daily_reports_write_self_or_admin on public.daily_reports for all using (
+  exists (
+    select 1 from public.user_account ua where ua.auth_uid = auth.uid() and (
+      ua.role in ('admin','super_admin') or ua.id = created_by
+    )
+  )
+) with check (true);
+
+drop policy if exists knowledge_items_select_authenticated on public.knowledge_items;
+drop policy if exists knowledge_items_write_admin on public.knowledge_items;
+create policy knowledge_items_select_authenticated on public.knowledge_items for select using (auth.uid() is not null);
+create policy knowledge_items_write_admin on public.knowledge_items for all using (
+  exists (select 1 from public.user_account ua where ua.auth_uid = auth.uid() and ua.role in ('admin','super_admin'))
+) with check (true);
+
+drop policy if exists knowledge_files_select_authenticated on public.knowledge_files;
+drop policy if exists knowledge_files_write_admin on public.knowledge_files;
+create policy knowledge_files_select_authenticated on public.knowledge_files for select using (auth.uid() is not null);
+create policy knowledge_files_write_admin on public.knowledge_files for all using (
+  exists (select 1 from public.user_account ua where ua.auth_uid = auth.uid() and ua.role in ('admin','super_admin'))
+) with check (true);
+
+drop policy if exists knowledge_categories_select_authenticated on public.knowledge_categories;
+drop policy if exists knowledge_categories_write_admin on public.knowledge_categories;
+create policy knowledge_categories_select_authenticated on public.knowledge_categories for select using (auth.uid() is not null);
+create policy knowledge_categories_write_admin on public.knowledge_categories for all using (
+  exists (select 1 from public.user_account ua where ua.auth_uid = auth.uid() and ua.role in ('admin','super_admin'))
+) with check (true);
+
+drop policy if exists ai_agents_select_authenticated on public.ai_agents;
+drop policy if exists ai_agents_write_admin on public.ai_agents;
+create policy ai_agents_select_authenticated on public.ai_agents for select using (auth.uid() is not null);
+create policy ai_agents_write_admin on public.ai_agents for all using (
+  exists (select 1 from public.user_account ua where ua.auth_uid = auth.uid() and ua.role in ('admin','super_admin'))
+) with check (true);
+
+drop policy if exists ai_functions_select_authenticated on public.ai_functions;
+drop policy if exists ai_functions_write_admin on public.ai_functions;
+create policy ai_functions_select_authenticated on public.ai_functions for select using (auth.uid() is not null);
+create policy ai_functions_write_admin on public.ai_functions for all using (
+  exists (select 1 from public.user_account ua where ua.auth_uid = auth.uid() and ua.role in ('admin','super_admin'))
+) with check (true);
+
+drop policy if exists ai_features_select_authenticated on public.ai_features;
+drop policy if exists ai_features_write_admin on public.ai_features;
+create policy ai_features_select_authenticated on public.ai_features for select using (auth.uid() is not null);
+create policy ai_features_write_admin on public.ai_features for all using (
+  exists (select 1 from public.user_account ua where ua.auth_uid = auth.uid() and ua.role in ('admin','super_admin'))
+) with check (true);
+
+drop policy if exists notifications_select_authenticated on public.notifications;
+drop policy if exists notifications_write_admin on public.notifications;
+create policy notifications_select_authenticated on public.notifications for select using (auth.uid() is not null);
+create policy notifications_write_admin on public.notifications for all using (
+  exists (select 1 from public.user_account ua where ua.auth_uid = auth.uid() and ua.role in ('admin','super_admin'))
+) with check (true);
+
+drop policy if exists notification_reads_select_authenticated on public.notification_reads;
+drop policy if exists notification_reads_write_authenticated on public.notification_reads;
+create policy notification_reads_select_authenticated on public.notification_reads for select using (auth.uid() is not null);
+create policy notification_reads_write_authenticated on public.notification_reads for all using (auth.uid() is not null) with check (true);
+
+alter table public.user_account add column if not exists legacy_id bigserial unique;
+update public.user_account set legacy_id = nextval('public.user_account_legacy_id_seq') where legacy_id is null;
+alter table public.user_account add column if not exists is_active boolean default true;
+update public.user_account set is_active = true where is_active is null;
+alter table public.user_account add column if not exists hashed_password text;

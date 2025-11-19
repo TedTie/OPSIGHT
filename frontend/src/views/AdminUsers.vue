@@ -353,7 +353,7 @@ const showCreateDialog = () => {
 const editUser = (user) => {
   isEdit.value = true
   Object.assign(form, {
-    id: parseInt(user.id), // 确保ID是数字类型
+    id: user.id,
     username: user.username,
     organization: user.organization || '',
     role: user.role || 'user',
@@ -429,7 +429,7 @@ const toggleUserStatus = async (user) => {
       }
     )
     
-    await api.put(`/users/${parseInt(user.id)}`, {
+    await api.put(`/users/${user.id}`, {
       ...user,
       is_active: !user.is_active
     })
