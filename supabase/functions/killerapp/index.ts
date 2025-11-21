@@ -25,7 +25,8 @@ async function parseBody(req: Request) {
 }
 
 const supabaseEnvUrl = Deno.env.get("SUPABASE_URL") ?? ""
-const supabaseEnvKey = Deno.env.get("SERVICE_ROLE_KEY") ?? (Deno.env.get("SUPABASE_ANON_KEY") ?? "")
+const supabaseEnvKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? (Deno.env.get("SERVICE_ROLE_KEY") ?? (Deno.env.get("SUPABASE_ANON_KEY") ?? ""))
+console.log("[Init] Supabase Key used:", supabaseEnvKey ? (supabaseEnvKey.slice(0, 5) + "...") : "None")
 
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
@@ -286,21 +287,31 @@ serve(async (req: Request): Promise<Response> => {
     const roleScope = (u.searchParams.get("role_scope") || "").toUpperCase()
     // 金额/单量类排名（from daily_reports）
     if (metricKey && metricKey !== "report_submission_rate" && metricKey !== "task_completion_rate") {
+      let allowed_uids: Set<string> | null = null
+      if (gid || (roleScope && roleScope !== "ALL")) {
+        let uq = supabase.from("user_account").select("id")
+        if (gid) uq = uq.eq("group_id", gid)
+        if (roleScope && roleScope !== "ALL") uq = uq.eq("identity_type", roleScope)
+        const { data: uids } = await uq
+        allowed_uids = new Set((uids || []).map(u => String((u as any).id)))
+      }
+
       let rq = supabase.from("daily_reports").select("work_date,created_by,new_sign_amount,new_sign_count,referral_amount,referral_count,renewal_amount,upgrade_amount,renewal_count,upgrade_count")
       if (start) rq = rq.gte("work_date", start)
       if (end) rq = rq.lte("work_date", end)
+      if (allowed_uids) {
+        // Note: if allowed_uids is very large, this might hit URL length limits. 
+        // But typically groups are small. If empty, it means no users match, so we can return empty.
+        if (allowed_uids.size === 0) return json({ top_10: [], current_user_rank: null })
+        rq = rq.in("created_by", Array.from(allowed_uids))
+      }
+
       const { data: rdata } = await rq
-      const { data: users } = await supabase.from("user_account").select("id,identity_type,group_id,username,avatar_url")
-      const candidUsers = (users || []).filter(u => {
-        const okGroup = gid ? String((u as any).group_id || "") === String(gid) : true
-        const okRole = roleScope ? String((u as any).identity_type || "").toUpperCase() === roleScope || roleScope === "ALL" : true
-        return okGroup && okRole
-      })
-      const candidSet = new Set(candidUsers.map(u => String((u as any).id)))
-      const rows = (rdata || []).filter(it => candidSet.has(String((it as any).created_by || "")))
+
       const grouped: Record<string, any> = {}
-      for (const r of rows) {
+      for (const r of rdata || []) {
         const cb = String((r as any).created_by || "")
+        if (!cb) continue
         if (!grouped[cb]) grouped[cb] = { user_id: cb, new_sign_amount: 0, new_sign_count: 0, referral_amount: 0, referral_count: 0, renewal_amount: 0, upgrade_amount: 0, renewal_count: 0, upgrade_count: 0 }
         const g = grouped[cb]
         g.new_sign_amount += Number((r as any).new_sign_amount || 0)
@@ -311,15 +322,9 @@ serve(async (req: Request): Promise<Response> => {
         g.upgrade_amount += Number((r as any).upgrade_amount || 0)
         g.renewal_count += Number((r as any).renewal_count || 0)
         g.upgrade_count += Number((r as any).upgrade_count || 0)
+        g.sales_amount = g.new_sign_amount + g.referral_amount + g.renewal_amount + g.upgrade_amount
       }
-      for (const urow of candidUsers) {
-        const id = String((urow as any).id)
-        if (!grouped[id]) grouped[id] = { user_id: id, new_sign_amount: 0, new_sign_count: 0, referral_amount: 0, referral_count: 0, renewal_amount: 0, upgrade_amount: 0, renewal_count: 0, upgrade_count: 0 }
-        const g = grouped[id]
-        g.name = (urow as any).username || (urow as any).id
-        g.avatar = (urow as any).avatar_url || null
-        g.sales_amount = Number(g.new_sign_amount || 0) + Number(g.referral_amount || 0) + Number(g.renewal_amount || 0) + Number(g.upgrade_amount || 0)
-      }
+
       const metricMap: Record<string, string> = {
         period_sales_amount: "sales_amount",
         period_new_sign_amount: "new_sign_amount",
@@ -332,15 +337,58 @@ serve(async (req: Request): Promise<Response> => {
         upgrade_count: "upgrade_count"
       }
       const key = metricMap[metricKey] || "sales_amount"
+
       let list = Object.values(grouped)
       list.sort((a: any, b: any) => Number((b as any)[key] || 0) - Number((a as any)[key] || 0))
-      list = list.map((it: any, idx: number) => ({ ...it, rank: idx + 1 }))
-      const top_10 = list.slice(0, 10)
+
+      // Calculate ranks
+      const rankedList = list.map((it: any, idx: number) => {
+        const val = Number((it as any)[key] || 0)
+        let fmt = String(val)
+        if (key.includes("rate")) fmt += "%"
+        return { ...it, rank: idx + 1, value: val, formatted_value: fmt }
+      })
+
+      // Identify needed User IDs
+      const neededIds = new Set<string>()
+      rankedList.slice(0, 10).forEach(it => neededIds.add(String(it.user_id)))
       let current_user_rank = null as any
       if (uid) {
-        const found = list.find(it => String((it as any).user_id || "") === String(uid))
-        if (found) current_user_rank = found
+        const found = rankedList.find(it => String((it as any).user_id || "") === String(uid))
+        if (found) {
+          current_user_rank = found
+          neededIds.add(String(found.user_id))
+        }
       }
+
+      // Fetch details
+      const { data: users } = await supabase.from("user_account").select("id,legacy_id,username,avatar_url").in("id", Array.from(neededIds))
+      const userMap = new Map<string, any>()
+      for (const u of users || []) {
+        userMap.set(String((u as any).id), u)
+        if ((u as any).legacy_id) userMap.set(String((u as any).legacy_id), u)
+      }
+
+      // Enrich Top 10
+      const top_10 = rankedList.slice(0, 10).map(it => {
+        const u = userMap.get(String(it.user_id))
+        return {
+          ...it,
+          name: (u as any)?.username || "Unknown",
+          avatar: (u as any)?.avatar_url || null
+        }
+      })
+
+      // Enrich Current User
+      if (current_user_rank) {
+        const u = userMap.get(String(current_user_rank.user_id))
+        current_user_rank = {
+          ...current_user_rank,
+          name: (u as any)?.username || "Unknown",
+          avatar: (u as any)?.avatar_url || null
+        }
+      }
+
       return json({ top_10, current_user_rank })
     }
     // 原有两类排名保持
@@ -362,8 +410,56 @@ serve(async (req: Request): Promise<Response> => {
         list = list.filter(it => allowed.has(it.user_id))
       }
       list.sort((a, b) => b.count - a.count)
-      const top_10 = list.slice(0, 10)
-      const current_user_rank = null
+
+      // Calculate ranks
+      const rankedList = list.map((it, idx) => ({ ...it, rank: idx + 1 }))
+
+      // Identify needed User IDs (Top 10 + Current User)
+      const neededIds = new Set<string>()
+      rankedList.slice(0, 10).forEach(it => neededIds.add(String(it.user_id)))
+      let current_user_rank = null
+      if (uid) {
+        const found = rankedList.find(it => String(it.user_id) === String(uid))
+        if (found) {
+          current_user_rank = found
+          neededIds.add(String(found.user_id))
+        }
+      }
+
+      // Fetch details for only these users
+      const { data: users } = await supabase.from("user_account").select("id,legacy_id,username,avatar_url").in("id", Array.from(neededIds))
+      const userMap = new Map<string, any>()
+      for (const u of users || []) {
+        userMap.set(String((u as any).id), u)
+        if ((u as any).legacy_id) userMap.set(String((u as any).legacy_id), u)
+      }
+
+      // Enrich Top 10
+      const top_10 = rankedList.slice(0, 10).map(it => {
+        const u = userMap.get(String(it.user_id))
+        const val = it.count
+        return {
+          ...it,
+          name: (u as any)?.username || "Unknown",
+          avatar: (u as any)?.avatar_url || null,
+          value: val,
+          formatted_value: String(val)
+        }
+      })
+
+      // Enrich Current User Rank if exists
+      if (current_user_rank) {
+        const u = userMap.get(String((current_user_rank as any).user_id))
+        const val = (current_user_rank as any).count
+        current_user_rank = {
+          ...current_user_rank,
+          name: (u as any)?.username || "Unknown",
+          avatar: (u as any)?.avatar_url || null,
+          value: val,
+          formatted_value: String(val)
+        }
+      }
+
       return json({ top_10, current_user_rank })
     }
     if (metricKey === "task_completion_rate") {
@@ -387,8 +483,56 @@ serve(async (req: Request): Promise<Response> => {
         list = list.filter(it => allowed.has(it.user_id))
       }
       list.sort((a, b) => b.rate - a.rate)
-      const top_10 = list.slice(0, 10)
-      const current_user_rank = null
+
+      // Calculate ranks
+      const rankedList = list.map((it, idx) => ({ ...it, rank: idx + 1 }))
+
+      // Identify needed User IDs (Top 10 + Current User)
+      const neededIds = new Set<string>()
+      rankedList.slice(0, 10).forEach(it => neededIds.add(String(it.user_id)))
+      let current_user_rank = null
+      if (uid) {
+        const found = rankedList.find(it => String(it.user_id) === String(uid))
+        if (found) {
+          current_user_rank = found
+          neededIds.add(String(found.user_id))
+        }
+      }
+
+      // Fetch details for only these users
+      const { data: users } = await supabase.from("user_account").select("id,legacy_id,username,avatar_url").in("id", Array.from(neededIds))
+      const userMap = new Map<string, any>()
+      for (const u of users || []) {
+        userMap.set(String((u as any).id), u)
+        if ((u as any).legacy_id) userMap.set(String((u as any).legacy_id), u)
+      }
+
+      // Enrich Top 10
+      const top_10 = rankedList.slice(0, 10).map(it => {
+        const u = userMap.get(String(it.user_id))
+        const val = it.rate
+        return {
+          ...it,
+          name: (u as any)?.username || "Unknown",
+          avatar: (u as any)?.avatar_url || null,
+          value: val,
+          formatted_value: val + "%"
+        }
+      })
+
+      // Enrich Current User Rank if exists
+      if (current_user_rank) {
+        const u = userMap.get(String((current_user_rank as any).user_id))
+        const val = (current_user_rank as any).rate
+        current_user_rank = {
+          ...current_user_rank,
+          name: (u as any)?.username || "Unknown",
+          avatar: (u as any)?.avatar_url || null,
+          value: val,
+          formatted_value: val + "%"
+        }
+      }
+
       return json({ top_10, current_user_rank })
     }
     return json({ top_10: [], current_user_rank: null })
@@ -419,6 +563,7 @@ serve(async (req: Request): Promise<Response> => {
     const end = u.searchParams.get("end_date") || ""
     const gid = u.searchParams.get("group_id") || ""
     const uid = u.searchParams.get("user_id") || ""
+    const idType = (u.searchParams.get("identity_type") || "").toUpperCase()
     const extended = "id,work_date,title,content,work_hours,task_progress,work_summary,mood_score,efficiency_score,call_count,call_duration,achievements,challenges,tomorrow_plan,ai_analysis,actual_amount,new_sign_amount,referral_amount,referral_count,renewal_amount,upgrade_amount,renewal_count,upgrade_count,created_at,updated_at,created_by"
     const base = "id,work_date,title,content,work_hours,task_progress,work_summary,mood_score,efficiency_score,call_count,call_duration,achievements,challenges,tomorrow_plan,ai_analysis,created_at,updated_at,created_by"
     let rq = supabase.from("daily_reports").select(extended)
@@ -439,20 +584,60 @@ serve(async (req: Request): Promise<Response> => {
       data = r2.data
     }
     let items = data || []
-    if (gid) {
-      const { data: users } = await supabase.from("user_account").select("id,group_id")
-      const set = new Set((users || []).filter(x => String((x as any).group_id || "") === String(gid)).map(x => String((x as any).id)))
-      items = items.filter(it => set.has(String((it as any).created_by || "")))
+
+    // Filter by Group or Identity
+    if (gid || idType) {
+      let uq = supabase.from("user_account").select("id,group_id,identity_type")
+      if (gid) uq = uq.eq("group_id", gid)
+      if (idType) uq = uq.eq("identity_type", idType)
+      const { data: users } = await uq
+      const allowedUids = new Set((users || []).map(u => String((u as any).id)))
+      items = items.filter(it => allowedUids.has(String((it as any).created_by || "")))
     }
+
     const total = items.length
     const startIdx = (page - 1) * size
     const sliced = items.slice(startIdx, startIdx + size)
+
+    // Enrich with submitter info
+    if (sliced.length > 0) {
+      const uids = new Set(sliced.map(it => String((it as any).created_by)).filter(Boolean))
+      if (uids.size > 0) {
+        const { data: users } = await supabase.from("user_account").select("id,legacy_id,username,avatar_url").in("id", Array.from(uids))
+        const userMap = new Map<string, any>()
+        for (const u of users || []) {
+          userMap.set(String((u as any).id), u)
+          if ((u as any).legacy_id) userMap.set(String((u as any).legacy_id), u)
+        }
+        sliced.forEach(it => {
+          const u = userMap.get(String((it as any).created_by))
+          if (u) {
+            (it as any).submitter = {
+              username: (u as any).username,
+              avatar_url: (u as any).avatar_url
+            }
+          }
+        })
+      }
+    }
+
     return json({ items: sliced, total, page, size })
   }
 
   if (afterFn === "api/v1/reports" && req.method === "POST") {
     const raw = await parseBody(req) as Record<string, unknown>
     const payload: Record<string, unknown> = { ...raw }
+
+    // Inject created_by from Auth Token
+    const authHeader = req.headers.get("Authorization")
+    if (authHeader) {
+      const token = authHeader.replace("Bearer ", "")
+      const { data: { user } } = await supabase.auth.getUser(token)
+      if (user) {
+        payload.created_by = user.id
+      }
+    }
+
     const ts = (payload as any).tasks_snapshot
     if (ts) {
       const ai = (payload as any).ai_analysis || {}
@@ -834,7 +1019,21 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if (afterFn === "api/v1/tasks" && req.method === "POST") {
-    const payload = await parseBody(req) as Record<string, unknown>
+    const raw = await parseBody(req) as Record<string, unknown>
+    const payload: Record<string, unknown> = { ...raw }
+
+    // Inject assignee_id/created_by from Auth Token if missing
+    const authHeader = req.headers.get("Authorization")
+    if (authHeader) {
+      const token = authHeader.replace("Bearer ", "")
+      const { data: { user } } = await supabase.auth.getUser(token)
+      if (user) {
+        if (!payload.assignee_id) payload.assignee_id = user.id
+        // tasks table usually doesn't have created_by, but if it does:
+        // payload.created_by = user.id 
+      }
+    }
+
     const { data, error } = await supabase.from("tasks").insert(payload).select("*").single()
     if (error) return json({ detail: error.message }, 500)
     return json(data, 201)

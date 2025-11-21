@@ -55,16 +55,30 @@
             />
           </el-select>
 
-          <!-- 超级管理员：组别/身份类型/用户筛选 -->
+          <!-- 超级管理员：身份/组别/用户筛选（层级顺序：Identity -> Group -> User） -->
+          <el-select
+            v-if="isSuperAdmin"
+            v-model="selectedRoleType"
+            placeholder="选择身份"
+            clearable
+            @change="onIdentityChange"
+          >
+            <el-option label="全部" :value="null" />
+            <el-option label="CC(顾问)" value="cc" />
+            <el-option label="SS(班主任)" value="ss" />
+            <el-option label="LP(英文辅导)" value="lp" />
+          </el-select>
+
           <el-select
             v-if="isSuperAdmin"
             v-model="selectedGroupId"
             placeholder="选择组别"
             clearable
-            @change="refreshUserOptionsAndReports"
+            @change="onGroupChange"
           >
+            <el-option label="全部" :value="null" />
             <el-option
-              v-for="group in groupOptions"
+              v-for="group in filteredGroupOptions"
               :key="group.id"
               :label="group.name"
               :value="group.id"
@@ -73,25 +87,14 @@
 
           <el-select
             v-if="isSuperAdmin"
-            v-model="selectedRoleType"
-            placeholder="身份类型(CC(顾问)/SS(班主任)/LP(英文辅导))"
-            clearable
-            @change="refreshUserOptions"
-          >
-            <el-option label="CC(顾问)" value="cc" />
-            <el-option label="SS(班主任)" value="ss" />
-            <el-option label="LP(英文辅导)" value="lp" />
-          </el-select>
-
-          <el-select
-            v-if="isSuperAdmin"
             v-model="selectedUserId"
-            placeholder="筛选用户"
+            placeholder="选择用户"
             clearable
             @change="fetchReports"
           >
+            <el-option label="全部" :value="null" />
             <el-option
-              v-for="user in userOptions"
+              v-for="user in filteredUserOptions"
               :key="user.id"
               :label="user.username"
               :value="user.id"
@@ -121,6 +124,17 @@
         <el-table-column prop="report_date" label="日期" width="120">
           <template #default="{ row }">
             {{ formatDate(row.report_date) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="提交人" width="150">
+          <template #default="{ row }">
+            <div v-if="row.submitter" style="display: flex; align-items: center; gap: 8px;">
+              <el-avatar :size="32" :src="row.submitter.avatar_url">
+                {{ row.submitter.username?.[0] || '?' }}
+              </el-avatar>
+              <span>{{ row.submitter.username || 'Unknown' }}</span>
+            </div>
+            <span v-else style="color: #999;">—</span>
           </template>
         </el-table-column>
         <el-table-column prop="summary" label="摘要" min-width="300" />
@@ -672,6 +686,19 @@ import api from '@/utils/api'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 
+// ... existing code ...
+
+// Initialize on mount
+onMounted(async () => {
+  if (isSuperAdmin.value) {
+    await fetchGroups()
+    await refreshUserOptions()
+  } else if (isAdmin.value) {
+    await fetchAdminGroupMembers()
+  }
+  await fetchReports()
+})
+
 // 数据
 const loading = ref(false)
 const reports = ref([])
@@ -691,6 +718,28 @@ const selectedUserId = ref(null)
 const selectedRoleType = ref(null)
 const groupOptions = ref([])
 const userOptions = ref([])
+// Filtered options for hierarchical filtering
+const filteredGroupOptions = computed(() => {
+  if (!selectedRoleType.value) return groupOptions.value
+  // Filter groups that have users of selected identity
+  const identityUsers = userOptions.value.filter(u => 
+    String(u.identity_type || '').toLowerCase() === selectedRoleType.value.toLowerCase()
+  )
+  const groupIds = new Set(identityUsers.map(u => u.group_id).filter(Boolean))
+  return groupOptions.value.filter(g => groupIds.has(g.id))
+})
+const filteredUserOptions = computed(() => {
+  let users = userOptions.value
+  if (selectedRoleType.value) {
+    users = users.filter(u => 
+      String(u.identity_type || '').toLowerCase() === selectedRoleType.value.toLowerCase()
+    )
+  }
+  if (selectedGroupId.value) {
+    users = users.filter(u => u.group_id === selectedGroupId.value)
+  }
+  return users
+})
 
 // 分页
 const pagination = reactive({
@@ -1170,6 +1219,7 @@ const fetchReports = async () => {
 
     // 角色默认视角与筛选
     if (isSuperAdmin.value) {
+      if (selectedRoleType.value) params.identity_type = selectedRoleType.value
       if (selectedGroupId.value) params.group_id = selectedGroupId.value
       if (selectedUserId.value) params.user_id = selectedUserId.value
     } else if (isAdmin.value) {
@@ -1206,6 +1256,7 @@ const fetchReports = async () => {
       renewal_count: r.renewal_count ?? 0,
       upgrade_count: r.upgrade_count ?? 0,
       ai_analysis: r.ai_analysis || {},
+      submitter: r.submitter || null,
       created_at: r.created_at,
       updated_at: r.updated_at
     })
@@ -1252,29 +1303,31 @@ const fetchAdminGroupMembers = async () => {
   }
 }
 
-const fetchAllUsersForSuperAdmin = async () => {
+const refreshUserOptions = async () => {
+  if (!isSuperAdmin.value) return
   try {
-    const res = await api.get('/users', { params: { page: 1, size: 100 } })
-    // 根据筛选条件过滤（组别/身份类型）
-    let list = res.data.items || []
-    if (selectedGroupId.value) {
-      list = list.filter(u => u.group_id === selectedGroupId.value)
-    }
-    if (selectedRoleType.value) {
-      list = list.filter(u => String(u.identity_type || '').toLowerCase() === String(selectedRoleType.value || '').toLowerCase())
-    }
-    userOptions.value = list
+    const params = { page: 1, size: 500 }
+    const res = await api.get('/users', { params })
+    userOptions.value = res.data.items || []
   } catch (e) {
     userOptions.value = []
   }
 }
 
-const refreshUserOptions = async () => {
-  if (isSuperAdmin.value) {
-    await fetchAllUsersForSuperAdmin()
-  } else if (isAdmin.value) {
-    await fetchAdminGroupMembers()
-  }
+// Hierarchical filter change handlers
+const onIdentityChange = () => {
+  selectedGroupId.value = null
+  selectedUserId.value = null
+  fetchReports()
+}
+
+const onGroupChange = () => {
+  selectedUserId.value = null
+  fetchReports()
+}
+
+const goToTaskDetail = (task) => {
+  router.push(`/tasks/${task.id}`)
 }
 
 const refreshUserOptionsAndReports = async () => {
