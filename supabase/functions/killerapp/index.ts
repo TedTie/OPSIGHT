@@ -85,12 +85,12 @@ serve(async (req: Request): Promise<Response> => {
     if (username.toLowerCase() === "admin" && password.length > 0) {
       return json({ user: { id: 1, username: "admin", role: "super_admin" } })
     }
-    const { data, error } = await supabase.from("user_account").select("id,username,role,is_active,hashed_password").eq("username", username).single()
+    const { data, error } = await supabase.from("user_account").select("id,username,role,is_active,hashed_password,avatar_url").eq("username", username).single()
     if (error || !data) return json({ detail: "用户名不存在或账户已被禁用" }, 401)
     if (!(data as any).is_active) return json({ detail: "用户名不存在或账户已被禁用" }, 401)
     const ok = (data as any).hashed_password ? bcrypt.compareSync(password, String((data as any).hashed_password)) : false
     if (!ok) return json({ detail: "用户名不存在或账户已被禁用" }, 401)
-    return json({ user: { id: (data as any).id, username: (data as any).username, role: (data as any).role } })
+    return json({ user: { id: (data as any).id, username: (data as any).username, role: (data as any).role, avatar_url: (data as any).avatar_url } })
   }
 
   if ((afterFn.startsWith("auth/logout") || afterFn.startsWith("api/v1/auth/logout")) && req.method === "POST") {
@@ -102,7 +102,7 @@ serve(async (req: Request): Promise<Response> => {
     if (!name) return json({ detail: "未认证" }, 401)
     const { data, error } = await supabase
       .from("user_account")
-      .select("id,username,role,identity_type,group_id,group_name,is_active,created_at")
+      .select("id,username,role,identity_type,group_id,group_name,is_active,created_at,avatar_url")
       .eq("username", name)
       .single()
     if (error || !data) return json({ detail: "未认证" }, 401)
@@ -362,7 +362,7 @@ serve(async (req: Request): Promise<Response> => {
       }
 
       // Fetch details
-      const { data: users } = await supabase.from("user_account").select("id,legacy_id,username").in("id", Array.from(neededIds))
+      const { data: users } = await supabase.from("user_account").select("id,legacy_id,username,avatar_url").in("id", Array.from(neededIds))
       const userMap = new Map<string, any>()
       for (const u of users || []) {
         userMap.set(String((u as any).id), u)
@@ -374,7 +374,8 @@ serve(async (req: Request): Promise<Response> => {
         const u = userMap.get(String(it.user_id))
         return {
           ...it,
-          name: (u as any)?.username || "Unknown"
+          name: (u as any)?.username || "Unknown",
+          avatar_url: (u as any)?.avatar_url
         }
       })
 
@@ -383,7 +384,8 @@ serve(async (req: Request): Promise<Response> => {
         const u = userMap.get(String(current_user_rank.user_id))
         current_user_rank = {
           ...current_user_rank,
-          name: (u as any)?.username || "Unknown"
+          name: (u as any)?.username || "Unknown",
+          avatar_url: (u as any)?.avatar_url
         }
       }
 
@@ -425,7 +427,7 @@ serve(async (req: Request): Promise<Response> => {
       }
 
       // Fetch details for only these users
-      const { data: users } = await supabase.from("user_account").select("id,legacy_id,username").in("id", Array.from(neededIds))
+      const { data: users } = await supabase.from("user_account").select("id,legacy_id,username,avatar_url").in("id", Array.from(neededIds))
       const userMap = new Map<string, any>()
       for (const u of users || []) {
         userMap.set(String((u as any).id), u)
@@ -439,6 +441,7 @@ serve(async (req: Request): Promise<Response> => {
         return {
           ...it,
           name: (u as any)?.username || "Unknown",
+          avatar_url: (u as any)?.avatar_url,
           value: val,
           formatted_value: String(val)
         }
@@ -451,6 +454,7 @@ serve(async (req: Request): Promise<Response> => {
         current_user_rank = {
           ...current_user_rank,
           name: (u as any)?.username || "Unknown",
+          avatar_url: (u as any)?.avatar_url,
           value: val,
           formatted_value: String(val)
         }
@@ -496,7 +500,7 @@ serve(async (req: Request): Promise<Response> => {
       }
 
       // Fetch details for only these users
-      const { data: users } = await supabase.from("user_account").select("id,legacy_id,username").in("id", Array.from(neededIds))
+      const { data: users } = await supabase.from("user_account").select("id,legacy_id,username,avatar_url").in("id", Array.from(neededIds))
       const userMap = new Map<string, any>()
       for (const u of users || []) {
         userMap.set(String((u as any).id), u)
@@ -510,6 +514,7 @@ serve(async (req: Request): Promise<Response> => {
         return {
           ...it,
           name: (u as any)?.username || "Unknown",
+          avatar_url: (u as any)?.avatar_url,
           value: val,
           formatted_value: val + "%"
         }
@@ -522,6 +527,7 @@ serve(async (req: Request): Promise<Response> => {
         current_user_rank = {
           ...current_user_rank,
           name: (u as any)?.username || "Unknown",
+          avatar_url: (u as any)?.avatar_url,
           value: val,
           formatted_value: val + "%"
         }
@@ -605,7 +611,7 @@ serve(async (req: Request): Promise<Response> => {
 
         const { data: users, error: userError } = await supabase
           .from("user_account")
-          .select("id,legacy_id,username")
+          .select("id,legacy_id,username,avatar_url")
           .in("id", uidArray)
 
         console.log(`[Reports] User query result: ${users?.length || 0} users found`, userError ? `Error: ${userError.message}` : '')
@@ -631,7 +637,8 @@ serve(async (req: Request): Promise<Response> => {
           const u = userMap.get(createdBy)
           if (u) {
             (it as any).submitter = {
-              username: (u as any).username
+              username: (u as any).username,
+              avatar_url: (u as any).avatar_url
             }
             console.log(`[Reports] ✓ Enriched report ${(it as any).id} with submitter: ${(u as any).username}`)
           } else {

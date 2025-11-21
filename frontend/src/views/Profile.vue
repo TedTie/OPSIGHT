@@ -213,16 +213,28 @@ import { VueCropper } from "vue-cropper"
 import { createClient } from '@supabase/supabase-js'
 
 // Supabase Client
+// Supabase Client
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-console.log('[Profile] Initializing Supabase:', {
+console.log('[Profile] Debug Info:', {
+  createClientType: typeof createClient,
   hasUrl: !!supabaseUrl,
   hasKey: !!supabaseKey,
-  url: supabaseUrl // Safe to show URL, it's public info usually
+  url: supabaseUrl
 })
 
-const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null
+let supabase = null
+try {
+  if (supabaseUrl && supabaseKey) {
+    supabase = createClient(supabaseUrl, supabaseKey)
+    console.log('[Profile] Supabase client created:', !!supabase)
+  } else {
+    console.warn('[Profile] Missing Supabase credentials, client not initialized')
+  }
+} catch (error) {
+  console.error('[Profile] Error creating Supabase client:', error)
+}
 
 // Store
 const authStore = useAuthStore()
