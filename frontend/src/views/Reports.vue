@@ -1235,6 +1235,14 @@ const fetchReports = async () => {
     // 1) 直接数组 [ {...}, {...} ]
     // 2) 分页对象 { items: [...], total: N }
     const data = response.data
+    
+    // Debug: 查看后端返回的实际数据
+    console.log('[Reports] API Response:', data)
+    if (data?.items?.[0]) {
+      console.log('[Reports] First report sample:', data.items[0])
+      console.log('[Reports] Submitter field:', data.items[0].submitter)
+    }
+    
     // 映射后端 DailyReportResponse -> 前端展示字段
     const mapReportToUI = (r) => ({
       id: r.id,
