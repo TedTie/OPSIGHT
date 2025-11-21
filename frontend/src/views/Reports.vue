@@ -1326,10 +1326,6 @@ const onGroupChange = () => {
   fetchReports()
 }
 
-const goToTaskDetail = (task) => {
-  router.push(`/tasks/${task.id}`)
-}
-
 const refreshUserOptionsAndReports = async () => {
   await refreshUserOptions()
   await fetchReports()
