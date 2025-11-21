@@ -607,7 +607,7 @@ serve(async (req: Request): Promise<Response> => {
       if (uids.size > 0) {
         // Query users by both id and legacy_id
         const uidArray = Array.from(uids)
-        let userQuery = supabase.from("user_account").select("id,legacy_id,username,avatar_url")
+        let userQuery = supabase.from("user_account").select("id,legacy_id,username")
 
         // Build OR query to match by id OR legacy_id
         const orConditions = uidArray.map(uid => `id.eq.${uid},legacy_id.eq.${uid}`).join(',')
@@ -633,8 +633,7 @@ serve(async (req: Request): Promise<Response> => {
           const u = userMap.get(createdBy)
           if (u) {
             (it as any).submitter = {
-              username: (u as any).username,
-              avatar_url: (u as any).avatar_url
+              username: (u as any).username
             }
             console.log(`[Reports] Enriched report ${(it as any).id} with submitter: ${(u as any).username}`)
           } else {

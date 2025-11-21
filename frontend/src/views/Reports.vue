@@ -126,18 +126,9 @@
             {{ formatDate(row.report_date) }}
           </template>
         </el-table-column>
-        <el-table-column label="提交人" width="200">
+        <el-table-column label="提交人" width="150">
           <template #default="{ row }">
-            <!-- Debug: 显示原始数据 -->
-            <div style="font-size: 10px; color: #999; margin-bottom: 4px;">
-              Debug: {{ JSON.stringify(row.submitter) }}
-            </div>
-            <div v-if="row.submitter" style="display: flex; align-items: center; gap: 8px;">
-              <el-avatar :size="32" :src="row.submitter.avatar_url">
-                {{ row.submitter.username?.[0] || '?' }}
-              </el-avatar>
-              <span>{{ row.submitter.username || 'Unknown' }}</span>
-            </div>
+            <span v-if="row.submitter">{{ row.submitter.username }}</span>
             <span v-else style="color: #999;">—</span>
           </template>
         </el-table-column>
