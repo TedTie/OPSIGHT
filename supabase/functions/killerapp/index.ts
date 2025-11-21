@@ -140,7 +140,8 @@ serve(async (req: Request): Promise<Response> => {
       renewal_count: sum(rows as any[], "renewal_count"),
       upgrade_count: sum(rows as any[], "upgrade_count")
     }
-    let gq = supabase.from("monthly_goals").select("*").eq("year", year).eq("month", month)
+    // Ensure we select all necessary columns for goals
+    let gq = supabase.from("monthly_goals").select("amount_target,new_sign_target_amount,referral_target_amount,renewal_total_target_amount,upgrade_target_count,renewal_target_count").eq("year", year).eq("month", month)
     if (idType) gq = gq.eq("identity_type", idType)
     const { data: goalRows } = await gq
     const goal = Array.isArray(goalRows) ? goalRows[0] || null : null
@@ -167,7 +168,7 @@ serve(async (req: Request): Promise<Response> => {
     const rows = (data || []).filter(it => set.has(String((it as any).created_by || "")))
     const bucket: Record<string, any> = {}
     const want = new Set(metrics)
-    const keys = ["new_sign_amount","new_sign_count","referral_amount","referral_count","renewal_amount","upgrade_amount","renewal_count","upgrade_count"]
+    const keys = ["new_sign_amount", "new_sign_count", "referral_amount", "referral_count", "renewal_amount", "upgrade_amount", "renewal_count", "upgrade_count"]
     for (const r of rows) {
       const d = String((r as any).work_date)
       if (!bucket[d]) bucket[d] = { date: d }
@@ -176,7 +177,7 @@ serve(async (req: Request): Promise<Response> => {
         if (!want.size || want.has(k)) kv[k] = Number(kv[k] || 0) + Number((r as any)[k] || 0)
       }
     }
-    const series = Object.values(bucket).sort((a: any,b: any)=> String(a.date) < String(b.date) ? -1 : 1)
+    const series = Object.values(bucket).sort((a: any, b: any) => String(a.date) < String(b.date) ? -1 : 1)
     return json({ series })
   }
 
@@ -185,7 +186,7 @@ serve(async (req: Request): Promise<Response> => {
     const end = u.searchParams.get("end_date") || ""
     const gid = u.searchParams.get("group_id") || ""
     const uid = u.searchParams.get("user_id") || ""
-    
+
     let tq = supabase.from("tasks").select("status,created_at,updated_at,group_id,assignee_id")
     if (start) tq = tq.gte("created_at", start)
     if (end) tq = tq.lte("created_at", end)
@@ -249,7 +250,7 @@ serve(async (req: Request): Promise<Response> => {
       statusCounter[st] = (statusCounter[st] || 0) + 1
       if (st === "completed") bucket[key].completed += 1
     }
-    const taskTrend = Object.values(bucket).sort((a,b)=>a.date<b.date?-1:1)
+    const taskTrend = Object.values(bucket).sort((a, b) => a.date < b.date ? -1 : 1)
     const taskStatus = [
       { name: "pending", status: "pending", value: statusCounter["pending"] || 0 },
       { name: "processing", status: "processing", value: statusCounter["processing"] || 0 },
@@ -332,9 +333,9 @@ serve(async (req: Request): Promise<Response> => {
       }
       const key = metricMap[metricKey] || "sales_amount"
       let list = Object.values(grouped)
-      list.sort((a:any,b:any)=> Number((b as any)[key] || 0) - Number((a as any)[key] || 0))
-      list = list.map((it:any, idx:number)=> ({ ...it, rank: idx+1 }))
-      const top_10 = list.slice(0,10)
+      list.sort((a: any, b: any) => Number((b as any)[key] || 0) - Number((a as any)[key] || 0))
+      list = list.map((it: any, idx: number) => ({ ...it, rank: idx + 1 }))
+      const top_10 = list.slice(0, 10)
       let current_user_rank = null as any
       if (uid) {
         const found = list.find(it => String((it as any).user_id || "") === String(uid))
@@ -360,8 +361,8 @@ serve(async (req: Request): Promise<Response> => {
         const allowed = new Set((users || []).filter(u => String((u as any).group_id || "") === String(gid)).map(u => String((u as any).id)))
         list = list.filter(it => allowed.has(it.user_id))
       }
-      list.sort((a,b)=>b.count-a.count)
-      const top_10 = list.slice(0,10)
+      list.sort((a, b) => b.count - a.count)
+      const top_10 = list.slice(0, 10)
       const current_user_rank = null
       return json({ top_10, current_user_rank })
     }
@@ -379,14 +380,14 @@ serve(async (req: Request): Promise<Response> => {
         const st = String((t as any).status || "")
         if (st === "completed" || st === "done") stats[uid2].completed += 1
       }
-      let list = Object.entries(stats).map(([user_id, s]) => ({ user_id, rate: s.total ? Math.round((s.completed/s.total)*100) : 0 }))
+      let list = Object.entries(stats).map(([user_id, s]) => ({ user_id, rate: s.total ? Math.round((s.completed / s.total) * 100) : 0 }))
       if (gid) {
         const { data: users } = await supabase.from("user_account").select("id,group_id")
         const allowed = new Set((users || []).filter(u => String((u as any).group_id || "") === String(gid)).map(u => String((u as any).id)))
         list = list.filter(it => allowed.has(it.user_id))
       }
-      list.sort((a,b)=>b.rate-a.rate)
-      const top_10 = list.slice(0,10)
+      list.sort((a, b) => b.rate - a.rate)
+      const top_10 = list.slice(0, 10)
       const current_user_rank = null
       return json({ top_10, current_user_rank })
     }
@@ -424,7 +425,7 @@ serve(async (req: Request): Promise<Response> => {
     if (start) rq = rq.gte("work_date", start)
     if (end) rq = rq.lte("work_date", end)
     if (uid) {
-      try { (rq as any).or && (rq = (rq as any).or(`created_by.eq.${uid},created_by.is.null`)) } catch {}
+      try { (rq as any).or && (rq = (rq as any).or(`created_by.eq.${uid},created_by.is.null`)) } catch { }
       if (!(rq as any).or) rq = rq.eq("created_by", uid)
     }
     let { data, error } = await rq
@@ -455,7 +456,7 @@ serve(async (req: Request): Promise<Response> => {
     const ts = (payload as any).tasks_snapshot
     if (ts) {
       const ai = (payload as any).ai_analysis || {}
-      ;(payload as any).ai_analysis = { ...ai, tasks_snapshot: ts }
+        ; (payload as any).ai_analysis = { ...ai, tasks_snapshot: ts }
       delete (payload as any).tasks_snapshot
     }
     let ins = await supabase.from("daily_reports").insert(payload).select("*").single()
@@ -483,7 +484,7 @@ serve(async (req: Request): Promise<Response> => {
     const ts = (payload as any).tasks_snapshot
     if (ts) {
       const ai = (payload as any).ai_analysis || {}
-      ;(payload as any).ai_analysis = { ...ai, tasks_snapshot: ts }
+        ; (payload as any).ai_analysis = { ...ai, tasks_snapshot: ts }
       delete (payload as any).tasks_snapshot
     }
     let upd = await supabase.from("daily_reports").update(payload).eq("id", id)
@@ -506,6 +507,7 @@ serve(async (req: Request): Promise<Response> => {
   if (/^api\/v1\/reports\/[0-9]+$/.test(afterFn) && req.method === "DELETE") {
     const segs = afterFn.split("/")
     const id = Number(segs[3])
+    // HARD DELETE: This will permanently remove the record from the database.
     const { error } = await supabase.from("daily_reports").delete().eq("id", id)
     if (error) return json({ detail: error.message }, 500)
     return json({ success: true })
@@ -515,7 +517,7 @@ serve(async (req: Request): Promise<Response> => {
     const segs = afterFn.split("/")
     const id = Number(segs[3])
     const { data } = await supabase.from("daily_reports").select("work_date").eq("id", id).single()
-    const workDate = (data as any)?.work_date || new Date().toISOString().slice(0,10)
+    const workDate = (data as any)?.work_date || new Date().toISOString().slice(0, 10)
     const { data: tasksData } = await supabase.from("tasks").select("title,status,updated_at,created_at")
     const comp: any[] = []
     const due: any[] = []
@@ -524,7 +526,7 @@ serve(async (req: Request): Promise<Response> => {
     for (const t of tasksData || []) {
       const title = String((t as any).title || "")
       const status = String((t as any).status || "")
-      const dstr = new Date((t as any).updated_at || (t as any).created_at).toISOString().slice(0,10)
+      const dstr = new Date((t as any).updated_at || (t as any).created_at).toISOString().slice(0, 10)
       if (dstr === workDate) {
         if (status === "completed") comp.push({ title })
         else ong.push({ title })
@@ -537,11 +539,11 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if (afterFn.startsWith("api/v1/task-sync/daily-task-summary") && req.method === "GET") {
-    const date = u.searchParams.get("date") || new Date().toISOString().slice(0,10)
+    const date = u.searchParams.get("date") || new Date().toISOString().slice(0, 10)
     const { data } = await supabase.from("tasks").select("title,status,updated_at")
     const items: any[] = []
     for (const t of data || []) {
-      const dstr = new Date((t as any).updated_at || new Date()).toISOString().slice(0,10)
+      const dstr = new Date((t as any).updated_at || new Date()).toISOString().slice(0, 10)
       if (dstr === date && String((t as any).status || "") === "completed") items.push({ title: String((t as any).title || ""), completion_data: "已完成" })
     }
     return json(items)
@@ -549,11 +551,11 @@ serve(async (req: Request): Promise<Response> => {
 
   if (afterFn.startsWith("api/v1/task-sync/auto-generate-daily-report") && req.method === "POST") {
     const body = await parseBody(req) as { date?: string }
-    const date = body.date || new Date().toISOString().slice(0,10)
+    const date = body.date || new Date().toISOString().slice(0, 10)
     const { data } = await supabase.from("tasks").select("title,status,updated_at")
     const lines: string[] = []
     for (const t of data || []) {
-      const dstr = new Date((t as any).updated_at || new Date()).toISOString().slice(0,10)
+      const dstr = new Date((t as any).updated_at || new Date()).toISOString().slice(0, 10)
       if (dstr === date && String((t as any).status || "") === "completed") lines.push(`${String((t as any).title || "")}: 已完成`)
     }
     const content = `工作摘要\n自动生成的完成任务列表如下:\n${lines.join("\n")}`
@@ -650,7 +652,7 @@ serve(async (req: Request): Promise<Response> => {
     if (error) return json({ detail: error.message }, 500)
     const { data: files } = await supabase.from("knowledge_files").select("id,filename,size,mime,url").eq("knowledge_id", id)
     const mapped = (files || []).map((f: any) => ({ id: f.id, original_filename: f.filename, file_size: f.size, mime_type: f.mime, url: f.url }))
-    ;(data as any).files = mapped
+      ; (data as any).files = mapped
     return json(data)
   }
 
@@ -858,6 +860,7 @@ serve(async (req: Request): Promise<Response> => {
   if (/^api\/v1\/tasks\/[0-9]+$/.test(afterFn) && req.method === "DELETE") {
     const segs = afterFn.split("/")
     const id = Number(segs[3])
+    // HARD DELETE: This will permanently remove the task.
     const { error } = await supabase.from("tasks").delete().eq("id", id)
     if (error) return json({ detail: error.message }, 500)
     return json({ success: true })
@@ -988,7 +991,7 @@ serve(async (req: Request): Promise<Response> => {
     let avg_emotion_score = 0
     if (total_reports) {
       const vals = arr.map(r => Number((r as any).mood_score || 0)).filter(v => !Number.isNaN(v))
-      const sum = vals.reduce((a,b)=>a+b, 0)
+      const sum = vals.reduce((a, b) => a + b, 0)
       avg_emotion_score = vals.length ? Math.round(sum / vals.length) : 0
     }
     return json({ total_reports, avg_emotion_score })
