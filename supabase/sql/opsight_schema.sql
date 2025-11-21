@@ -232,6 +232,7 @@ create table if not exists public.daily_reports (
 
 alter table public.daily_reports add column if not exists actual_amount numeric default 0;
 alter table public.daily_reports add column if not exists new_sign_amount numeric default 0;
+alter table public.daily_reports add column if not exists new_sign_count int default 0;
 alter table public.daily_reports add column if not exists referral_amount numeric default 0;
 alter table public.daily_reports add column if not exists referral_count int default 0;
 alter table public.daily_reports add column if not exists renewal_amount numeric default 0;

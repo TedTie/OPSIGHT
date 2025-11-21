@@ -109,19 +109,115 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if (afterFn.startsWith("api/v1/analytics/summary") && req.method === "GET") {
-    const idt = (u.searchParams.get("identity_type") || "").toUpperCase()
-    if (idt === "CC") return json({ month: { actual_amount: 0, new_sign_amount: 0, referral_amount: 0, referral_count: 0 }, progress_display: {} })
-    if (idt === "SS") return json({ month: { actual_amount: 0, renewal_amount: 0, upgrade_amount: 0, renewal_count: 0, upgrade_count: 0 }, progress_display: {} })
-    return json({ month: { actual_amount: 0 } })
+    const idType = (u.searchParams.get("identity_type") || "").toUpperCase()
+    const group_id = u.searchParams.get("group_id") || ""
+    const user_id = u.searchParams.get("user_id") || ""
+    const year = Number(u.searchParams.get("year") || "0")
+    const month = Number(u.searchParams.get("month") || "0")
+    const start = month && year ? new Date(Date.UTC(year, month - 1, 1)).toISOString().slice(0, 10) : ""
+    const end = month && year ? new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10) : ""
+
+    const { data: users } = await supabase.from("user_account").select("id,identity_type,group_id")
+    let candid = (users || [])
+    if (idType) candid = candid.filter(x => String((x as any).identity_type || "").toUpperCase() === idType)
+    if (group_id) candid = candid.filter(x => String((x as any).group_id || "") === String(group_id))
+    if (user_id) candid = candid.filter(x => String((x as any).id || "") === String(user_id))
+    const set = new Set(candid.map(x => String((x as any).id)))
+
+    let rq = supabase.from("daily_reports").select("work_date,created_by,new_sign_amount,new_sign_count,referral_amount,referral_count,renewal_amount,upgrade_amount,renewal_count,upgrade_count")
+    if (start) rq = rq.gte("work_date", start)
+    if (end) rq = rq.lte("work_date", end)
+    const { data } = await rq
+    const rows = (data || []).filter(it => set.has(String((it as any).created_by || "")))
+    const sum = (arr: any[], key: string) => arr.reduce((acc, cur) => acc + Number((cur as any)[key] || 0), 0)
+    const monthObj = {
+      new_sign_amount: sum(rows as any[], "new_sign_amount"),
+      new_sign_count: sum(rows as any[], "new_sign_count"),
+      referral_amount: sum(rows as any[], "referral_amount"),
+      referral_count: sum(rows as any[], "referral_count"),
+      renewal_amount: sum(rows as any[], "renewal_amount"),
+      upgrade_amount: sum(rows as any[], "upgrade_amount"),
+      renewal_count: sum(rows as any[], "renewal_count"),
+      upgrade_count: sum(rows as any[], "upgrade_count")
+    }
+    let gq = supabase.from("monthly_goals").select("*").eq("year", year).eq("month", month)
+    if (idType) gq = gq.eq("identity_type", idType)
+    const { data: goalRows } = await gq
+    const goal = Array.isArray(goalRows) ? goalRows[0] || null : null
+    return json({ month: monthObj, goal })
   }
 
   if (afterFn.startsWith("api/v1/analytics/trend") && req.method === "GET") {
-    return json({ series: [] })
+    const start = u.searchParams.get("start_date") || ""
+    const end = u.searchParams.get("end_date") || ""
+    const gid = u.searchParams.get("group_id") || ""
+    const uid = u.searchParams.get("user_id") || ""
+    const idType = (u.searchParams.get("identity_type") || "").toUpperCase()
+    const metrics = (u.searchParams.getAll("metrics") || []) as string[]
+    let rq = supabase.from("daily_reports").select("work_date,created_by,new_sign_amount,new_sign_count,referral_amount,referral_count,renewal_amount,upgrade_amount,renewal_count,upgrade_count")
+    if (start) rq = rq.gte("work_date", start)
+    if (end) rq = rq.lte("work_date", end)
+    const { data: users } = await supabase.from("user_account").select("id,identity_type,group_id")
+    let candid = (users || [])
+    if (idType) candid = candid.filter(x => String((x as any).identity_type || "").toUpperCase() === idType)
+    if (gid) candid = candid.filter(x => String((x as any).group_id || "") === String(gid))
+    if (uid) candid = candid.filter(x => String((x as any).id || "") === String(uid))
+    const set = new Set(candid.map(x => String((x as any).id)))
+    const { data } = await rq
+    const rows = (data || []).filter(it => set.has(String((it as any).created_by || "")))
+    const bucket: Record<string, any> = {}
+    const want = new Set(metrics)
+    const keys = ["new_sign_amount","new_sign_count","referral_amount","referral_count","renewal_amount","upgrade_amount","renewal_count","upgrade_count"]
+    for (const r of rows) {
+      const d = String((r as any).work_date)
+      if (!bucket[d]) bucket[d] = { date: d }
+      const kv = bucket[d]
+      for (const k of keys) {
+        if (!want.size || want.has(k)) kv[k] = Number(kv[k] || 0) + Number((r as any)[k] || 0)
+      }
+    }
+    const series = Object.values(bucket).sort((a: any,b: any)=> String(a.date) < String(b.date) ? -1 : 1)
+    return json({ series })
   }
 
   if (afterFn.startsWith("api/v1/analytics/data") && req.method === "GET") {
-    const metrics = { task_completion_rate: 0, report_submission_rate: 0 }
-    return json({ metrics })
+    const start = u.searchParams.get("start_date") || ""
+    const end = u.searchParams.get("end_date") || ""
+    const gid = u.searchParams.get("group_id") || ""
+    const uid = u.searchParams.get("user_id") || ""
+    
+    let tq = supabase.from("tasks").select("status,created_at,updated_at,group_id,assignee_id")
+    if (start) tq = tq.gte("created_at", start)
+    if (end) tq = tq.lte("created_at", end)
+    if (gid) tq = tq.eq("group_id", Number(gid))
+    if (uid) tq = tq.eq("assignee_id", uid)
+    const { data: tasksData } = await tq
+    const totalTasks = (tasksData || []).length
+    const doneTasks = (tasksData || []).filter(t => {
+      const st = String((t as any).status || "")
+      return st === "done" || st === "completed"
+    }).length
+    const task_completion_rate = totalTasks ? Math.round(doneTasks / totalTasks * 100) : 0
+
+    let rq = supabase.from("daily_reports").select("work_date,created_by")
+    if (start) rq = rq.gte("work_date", start)
+    if (end) rq = rq.lte("work_date", end)
+    if (uid) rq = rq.eq("created_by", uid)
+    const { data: rdata } = await rq
+    let daysSet = new Set<string>()
+    if (gid) {
+      const { data: users } = await supabase.from("user_account").select("id,group_id")
+      const set = new Set((users || []).filter(x => String((x as any).group_id || "") === String(gid)).map(x => String((x as any).id)))
+      for (const r of rdata || []) {
+        const cb = String((r as any).created_by || "")
+        if (set.has(cb)) daysSet.add(String((r as any).work_date))
+      }
+    } else {
+      daysSet = new Set((rdata || []).map(r => String((r as any).work_date)))
+    }
+    const totalDays = (start && end) ? Math.max(1, Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / 86400000) + 1) : daysSet.size || 30
+    const report_submission_rate = Math.round(daysSet.size / totalDays * 100)
+    return json({ metrics: { task_completion_rate, report_submission_rate } })
   }
 
   if (afterFn.startsWith("api/v1/analytics/ai-insight") && req.method === "POST") {
@@ -181,20 +277,82 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if (afterFn.startsWith("api/v1/analytics/ranking") && req.method === "GET") {
-    const metric = u.searchParams.get("metric_key") || ""
+    const metricKey = u.searchParams.get("metric_key") || ""
     const start = u.searchParams.get("start_date") || ""
     const end = u.searchParams.get("end_date") || ""
     const gid = u.searchParams.get("group_id") || ""
-    if (metric === "report_submission_rate") {
+    const uid = u.searchParams.get("user_id") || ""
+    const roleScope = (u.searchParams.get("role_scope") || "").toUpperCase()
+    // 金额/单量类排名（from daily_reports）
+    if (metricKey && metricKey !== "report_submission_rate" && metricKey !== "task_completion_rate") {
+      let rq = supabase.from("daily_reports").select("work_date,created_by,new_sign_amount,new_sign_count,referral_amount,referral_count,renewal_amount,upgrade_amount,renewal_count,upgrade_count")
+      if (start) rq = rq.gte("work_date", start)
+      if (end) rq = rq.lte("work_date", end)
+      const { data: rdata } = await rq
+      const { data: users } = await supabase.from("user_account").select("id,identity_type,group_id,username,avatar_url")
+      const candidUsers = (users || []).filter(u => {
+        const okGroup = gid ? String((u as any).group_id || "") === String(gid) : true
+        const okRole = roleScope ? String((u as any).identity_type || "").toUpperCase() === roleScope || roleScope === "ALL" : true
+        return okGroup && okRole
+      })
+      const candidSet = new Set(candidUsers.map(u => String((u as any).id)))
+      const rows = (rdata || []).filter(it => candidSet.has(String((it as any).created_by || "")))
+      const grouped: Record<string, any> = {}
+      for (const r of rows) {
+        const cb = String((r as any).created_by || "")
+        if (!grouped[cb]) grouped[cb] = { user_id: cb, new_sign_amount: 0, new_sign_count: 0, referral_amount: 0, referral_count: 0, renewal_amount: 0, upgrade_amount: 0, renewal_count: 0, upgrade_count: 0 }
+        const g = grouped[cb]
+        g.new_sign_amount += Number((r as any).new_sign_amount || 0)
+        g.new_sign_count += Number((r as any).new_sign_count || 0)
+        g.referral_amount += Number((r as any).referral_amount || 0)
+        g.referral_count += Number((r as any).referral_count || 0)
+        g.renewal_amount += Number((r as any).renewal_amount || 0)
+        g.upgrade_amount += Number((r as any).upgrade_amount || 0)
+        g.renewal_count += Number((r as any).renewal_count || 0)
+        g.upgrade_count += Number((r as any).upgrade_count || 0)
+      }
+      for (const urow of candidUsers) {
+        const id = String((urow as any).id)
+        if (!grouped[id]) grouped[id] = { user_id: id, new_sign_amount: 0, new_sign_count: 0, referral_amount: 0, referral_count: 0, renewal_amount: 0, upgrade_amount: 0, renewal_count: 0, upgrade_count: 0 }
+        const g = grouped[id]
+        g.name = (urow as any).username || (urow as any).id
+        g.avatar = (urow as any).avatar_url || null
+        g.sales_amount = Number(g.new_sign_amount || 0) + Number(g.referral_amount || 0) + Number(g.renewal_amount || 0) + Number(g.upgrade_amount || 0)
+      }
+      const metricMap: Record<string, string> = {
+        period_sales_amount: "sales_amount",
+        period_new_sign_amount: "new_sign_amount",
+        period_referral_amount: "referral_amount",
+        period_renewal_amount: "renewal_amount",
+        period_upgrade_amount: "upgrade_amount",
+        new_sign_count: "new_sign_count",
+        referral_count: "referral_count",
+        renewal_count: "renewal_count",
+        upgrade_count: "upgrade_count"
+      }
+      const key = metricMap[metricKey] || "sales_amount"
+      let list = Object.values(grouped)
+      list.sort((a:any,b:any)=> Number((b as any)[key] || 0) - Number((a as any)[key] || 0))
+      list = list.map((it:any, idx:number)=> ({ ...it, rank: idx+1 }))
+      const top_10 = list.slice(0,10)
+      let current_user_rank = null as any
+      if (uid) {
+        const found = list.find(it => String((it as any).user_id || "") === String(uid))
+        if (found) current_user_rank = found
+      }
+      return json({ top_10, current_user_rank })
+    }
+    // 原有两类排名保持
+    if (metricKey === "report_submission_rate") {
       let uq = supabase.from("daily_reports").select("created_by,work_date")
       if (start) uq = uq.gte("work_date", start)
       if (end) uq = uq.lte("work_date", end)
       const { data } = await uq
       const counts: Record<string, number> = {}
       for (const r of data || []) {
-        const uid = String((r as any).created_by || "")
-        if (!uid) continue
-        counts[uid] = (counts[uid] || 0) + 1
+        const uid2 = String((r as any).created_by || "")
+        if (!uid2) continue
+        counts[uid2] = (counts[uid2] || 0) + 1
       }
       let list = Object.entries(counts).map(([user_id, count]) => ({ user_id, count }))
       if (gid) {
@@ -207,18 +365,19 @@ serve(async (req: Request): Promise<Response> => {
       const current_user_rank = null
       return json({ top_10, current_user_rank })
     }
-    if (metric === "task_completion_rate") {
+    if (metricKey === "task_completion_rate") {
       let tq = supabase.from("tasks").select("assignee_id,status,updated_at")
       if (start) tq = tq.gte("updated_at", start)
       if (end) tq = tq.lte("updated_at", end)
       const { data } = await tq
       const stats: Record<string, { total: number; completed: number }> = {}
       for (const t of data || []) {
-        const uid = String((t as any).assignee_id || "")
-        if (!uid) continue
-        if (!stats[uid]) stats[uid] = { total: 0, completed: 0 }
-        stats[uid].total += 1
-        if ((t as any).status === "completed") stats[uid].completed += 1
+        const uid2 = String((t as any).assignee_id || "")
+        if (!uid2) continue
+        if (!stats[uid2]) stats[uid2] = { total: 0, completed: 0 }
+        stats[uid2].total += 1
+        const st = String((t as any).status || "")
+        if (st === "completed" || st === "done") stats[uid2].completed += 1
       }
       let list = Object.entries(stats).map(([user_id, s]) => ({ user_id, rate: s.total ? Math.round((s.completed/s.total)*100) : 0 }))
       if (gid) {

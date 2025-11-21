@@ -64,22 +64,27 @@ Base.metadata.create_all(bind=engine)
 # 运行时迁移：为 daily_reports 表添加新增销售相关列（SQLite 兼容）
 def _ensure_daily_report_sales_columns():
     try:
+        from sqlalchemy import inspect
+        inspector = inspect(engine)
+        cols = [c['name'] for c in inspector.get_columns('daily_reports')]
+        
+        additions = [
+            ("new_sign_count", "INTEGER DEFAULT 0"),
+            ("new_sign_amount", "FLOAT DEFAULT 0.0"),
+            ("renewal_count", "INTEGER DEFAULT 0"),
+            ("upgrade_count", "INTEGER DEFAULT 0"),
+            ("referral_count", "INTEGER DEFAULT 0"),
+            ("referral_amount", "FLOAT DEFAULT 0.0"),
+            ("renewal_amount", "FLOAT DEFAULT 0.0"),
+            ("upgrade_amount", "FLOAT DEFAULT 0.0"),
+        ]
+        
         with engine.connect() as conn:
-            cols = [row[1] for row in conn.execute(text("PRAGMA table_info(daily_reports);")).fetchall()]
-            additions = [
-                ("new_sign_count", "INTEGER DEFAULT 0"),
-                ("new_sign_amount", "FLOAT DEFAULT 0.0"),
-                ("renewal_count", "INTEGER DEFAULT 0"),
-                ("upgrade_count", "INTEGER DEFAULT 0"),
-                ("referral_count", "INTEGER DEFAULT 0"),
-                ("referral_amount", "FLOAT DEFAULT 0.0"),
-                ("renewal_amount", "FLOAT DEFAULT 0.0"),
-                ("upgrade_amount", "FLOAT DEFAULT 0.0"),
-            ]
             for name, decl in additions:
                 if name not in cols:
                     try:
                         conn.execute(text(f"ALTER TABLE daily_reports ADD COLUMN {name} {decl};"))
+                        conn.commit()
                         logger.info(f"Added column daily_reports.{name}")
                     except Exception as e:
                         logger.warning(f"Failed to add column {name}: {e}")
@@ -91,17 +96,22 @@ _ensure_daily_report_sales_columns()
 # 运行时迁移：为 monthly_goals 表添加新增目标金额列（SQLite 兼容）
 def _ensure_monthly_goal_target_columns():
     try:
+        from sqlalchemy import inspect
+        inspector = inspect(engine)
+        cols = [c['name'] for c in inspector.get_columns('monthly_goals')]
+        
+        additions = [
+            ("new_sign_target_amount", "FLOAT DEFAULT 0.0"),
+            ("referral_target_amount", "FLOAT DEFAULT 0.0"),
+            ("renewal_total_target_amount", "FLOAT DEFAULT 0.0"),
+        ]
+        
         with engine.connect() as conn:
-            cols = [row[1] for row in conn.execute(text("PRAGMA table_info(monthly_goals);")).fetchall()]
-            additions = [
-                ("new_sign_target_amount", "FLOAT DEFAULT 0.0"),
-                ("referral_target_amount", "FLOAT DEFAULT 0.0"),
-                ("renewal_total_target_amount", "FLOAT DEFAULT 0.0"),
-            ]
             for name, decl in additions:
                 if name not in cols:
                     try:
                         conn.execute(text(f"ALTER TABLE monthly_goals ADD COLUMN {name} {decl};"))
+                        conn.commit()
                         logger.info(f"Added column monthly_goals.{name}")
                     except Exception as e:
                         logger.warning(f"Failed to add column {name}: {e}")
@@ -113,14 +123,18 @@ _ensure_monthly_goal_target_columns()
 # 运行时迁移：确保 users 表存在 hashed_password 列
 def _ensure_users_password_column():
     try:
-        with engine.connect() as conn:
-            cols = [row[1] for row in conn.execute(text("PRAGMA table_info(users);")).fetchall()]
-            if "hashed_password" not in cols:
-                try:
+        from sqlalchemy import inspect
+        inspector = inspect(engine)
+        cols = [c['name'] for c in inspector.get_columns('users')]
+        
+        if "hashed_password" not in cols:
+            try:
+                with engine.connect() as conn:
                     conn.execute(text("ALTER TABLE users ADD COLUMN hashed_password TEXT;"))
+                    conn.commit()
                     logger.info("Added column users.hashed_password")
-                except Exception as e:
-                    logger.warning(f"Failed to add users.hashed_password: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to add users.hashed_password: {e}")
     except Exception as e:
         logger.warning(f"Users password column ensure failed: {e}")
 
