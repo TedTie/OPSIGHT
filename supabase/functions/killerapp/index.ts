@@ -602,20 +602,43 @@ serve(async (req: Request): Promise<Response> => {
     // Enrich with submitter info
     if (sliced.length > 0) {
       const uids = new Set(sliced.map(it => String((it as any).created_by)).filter(Boolean))
+      console.log(`[Reports] Enriching ${sliced.length} reports, found ${uids.size} unique created_by values:`, Array.from(uids))
+
       if (uids.size > 0) {
-        const { data: users } = await supabase.from("user_account").select("id,legacy_id,username,avatar_url").in("id", Array.from(uids))
+        // Query users by both id and legacy_id
+        const uidArray = Array.from(uids)
+        let userQuery = supabase.from("user_account").select("id,legacy_id,username,avatar_url")
+
+        // Build OR query to match by id OR legacy_id
+        const orConditions = uidArray.map(uid => `id.eq.${uid},legacy_id.eq.${uid}`).join(',')
+        try {
+          userQuery = (userQuery as any).or(orConditions)
+        } catch (e) {
+          // Fallback: just query by id
+          userQuery = userQuery.in("id", uidArray)
+        }
+
+        const { data: users, error: userError } = await userQuery
+        console.log(`[Reports] User query result: ${users?.length || 0} users found`, userError ? `Error: ${userError.message}` : '')
+
         const userMap = new Map<string, any>()
         for (const u of users || []) {
           userMap.set(String((u as any).id), u)
           if ((u as any).legacy_id) userMap.set(String((u as any).legacy_id), u)
+          console.log(`[Reports] Mapped user: id=${(u as any).id}, legacy_id=${(u as any).legacy_id}, username=${(u as any).username}`)
         }
+
         sliced.forEach(it => {
-          const u = userMap.get(String((it as any).created_by))
+          const createdBy = String((it as any).created_by)
+          const u = userMap.get(createdBy)
           if (u) {
             (it as any).submitter = {
               username: (u as any).username,
               avatar_url: (u as any).avatar_url
             }
+            console.log(`[Reports] Enriched report ${(it as any).id} with submitter: ${(u as any).username}`)
+          } else {
+            console.log(`[Reports] No user found for created_by: ${createdBy}`)
           }
         })
       }
