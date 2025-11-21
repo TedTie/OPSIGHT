@@ -711,8 +711,8 @@ const filters = reactive({
 
 // 角色与筛选
 const authStore = useAuthStore()
-const isAdmin = computed(() => !!authStore.user?.is_admin && !authStore.user?.is_super_admin)
-const isSuperAdmin = computed(() => !!authStore.user?.is_super_admin)
+const isAdmin = computed(() => authStore.isAdmin)
+const isSuperAdmin = computed(() => authStore.isSuperAdmin)
 const selectedGroupId = ref(null)
 const selectedUserId = ref(null)
 const selectedRoleType = ref(null)
