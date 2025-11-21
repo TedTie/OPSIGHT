@@ -215,6 +215,13 @@ import { createClient } from '@supabase/supabase-js'
 // Supabase Client
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+console.log('[Profile] Initializing Supabase:', {
+  hasUrl: !!supabaseUrl,
+  hasKey: !!supabaseKey,
+  url: supabaseUrl // Safe to show URL, it's public info usually
+})
+
 const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null
 
 // Store
