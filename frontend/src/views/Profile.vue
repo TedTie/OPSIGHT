@@ -77,7 +77,6 @@
         </span>
       </template>
     </el-dialog>
-    </el-card>
 
     <!-- 详细信息 -->
     <el-card class="content-card">
