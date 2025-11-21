@@ -3022,6 +3022,116 @@ async def upsert_monthly_goal(
         updated_at=target.updated_at
     )
 
+@app.get("/api/v1/analytics/team-performance")
+async def analytics_team_performance(
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    role_scope: Optional[str] = Query(None),
+    group_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    管理员/超管：团队绩效表
+    返回：用户列表，包含个人目标、已完成金额、完成率
+    """
+    if not (current_user.is_admin or current_user.is_super_admin):
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+
+    s, e = _parse_date_range(start_date, end_date)
+    
+    # 1. 确定用户范围
+    users_query = db.query(User).filter(User.is_active == True)
+    
+    if current_user.is_super_admin:
+        # 超管：可筛选组别或角色
+        if group_id:
+            users_query = users_query.filter(User.group_id == group_id)
+        if role_scope:
+            if role_scope.upper() in ["CC", "SS", "LP"]:
+                users_query = users_query.filter(func.upper(User.identity_type) == role_scope.upper())
+    else:
+        # 管理员：只能看自己组
+        if not current_user.group_id:
+            return [] # 无组别管理员，返回空
+        users_query = users_query.filter(User.group_id == current_user.group_id)
+        # 管理员也可以被前端筛选 role_scope 进一步过滤
+        if role_scope and role_scope.upper() in ["CC", "SS", "LP"]:
+             users_query = users_query.filter(func.upper(User.identity_type) == role_scope.upper())
+
+    users = users_query.all()
+    if not users:
+        return []
+
+    # 2. 准备数据容器
+    results = []
+    
+    # 3. 批量获取目标和日报数据
+    target_year = e.year
+    target_month = e.month
+
+    for u in users:
+        # A. 获取个人目标 (scope='user')
+        monthly_goal = db.query(MonthlyGoal).filter(
+            MonthlyGoal.user_id == u.id,
+            MonthlyGoal.year == target_year,
+            MonthlyGoal.month == target_month,
+            MonthlyGoal.scope == 'user'
+        ).first()
+
+        # 确定身份类型
+        identity = u.identity_type.upper() if u.identity_type else "CC"
+        
+        goal_amount = 0.0
+        if monthly_goal:
+            if identity == "CC":
+                # CC: new_sign + referral
+                goal_amount = (monthly_goal.new_sign_target_amount or 0) + (monthly_goal.referral_target_amount or 0)
+                if goal_amount == 0 and monthly_goal.amount_target:
+                    goal_amount = monthly_goal.amount_target
+            elif identity == "SS":
+                # SS: renewal_total
+                goal_amount = monthly_goal.renewal_total_target_amount or 0
+                if goal_amount == 0 and monthly_goal.amount_target:
+                    goal_amount = monthly_goal.amount_target
+        
+        # B. 获取实际完成金额
+        reports = db.query(DailyReport).filter(
+            DailyReport.user_id == u.id,
+            DailyReport.report_date >= s.date(),
+            DailyReport.report_date <= e.date()
+        ).all()
+
+        completed_amount = 0.0
+        for r in reports:
+            if identity == "CC":
+                completed_amount += (r.new_sign_amount or 0) + (r.referral_amount or 0)
+            elif identity == "SS":
+                # SS: renewal only (exclude upgrade)
+                completed_amount += (r.renewal_amount or 0)
+        
+        # C. 计算完成率
+        completion_rate = 0.0
+        if goal_amount > 0:
+            completion_rate = round((completed_amount / goal_amount) * 100, 1)
+        elif completed_amount > 0:
+            completion_rate = 100.0
+        
+        results.append({
+            "user_id": u.id,
+            "username": u.username,
+            "group_name": u.group.name if u.group else "未分组",
+            "identity": identity,
+            "goal_amount": goal_amount,
+            "completed_amount": completed_amount,
+            "completion_rate": completion_rate
+        })
+
+    # 排序：完成率降序
+    results.sort(key=lambda x: x["completion_rate"], reverse=True)
+    
+    return results
+
 # 别名路由：符合规划 /api/v1/analytics/goals/monthly
 @app.get("/api/v1/analytics/goals/monthly", response_model=List[MonthlyGoalResponse])
 async def analytics_get_monthly_goals(

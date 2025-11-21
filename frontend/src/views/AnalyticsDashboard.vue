@@ -53,6 +53,12 @@
       <RankingList :metricKey="activeMetricKey" :filterParams="filterParams" />
     </el-card>
 
+    <!-- 团队绩效表（管理员/超管可见） -->
+    <AdminTeamPerformance
+      v-if="authStore.isAdmin || authStore.isSuperAdmin"
+      :filterParams="filterParams"
+    />
+
     <!-- AI洞察弹窗 -->
     <el-dialog v-model="aiDialogVisible" title="AI洞察" width="620px">
       <div style="white-space: pre-wrap; min-height: 120px;">{{ aiInsightText || '—' }}</div>
@@ -70,6 +76,7 @@ import FilterBar from '@/components/FilterBar.vue'
 import CardGrid from '@/components/CardGrid.vue'
 import TrendChartModule from '@/components/TrendChartModule.vue'
 import RankingList from '@/components/RankingList.vue'
+import AdminTeamPerformance from '@/components/AdminTeamPerformance.vue'
 import api from '@/utils/api'
 import { getWeekStartEnd, getMonthStartEnd, getTodayString } from '@/utils/date'
 import { useAuthStore } from '@/stores/auth'
