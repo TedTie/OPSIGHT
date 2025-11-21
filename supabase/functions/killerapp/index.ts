@@ -362,7 +362,7 @@ serve(async (req: Request): Promise<Response> => {
       }
 
       // Fetch details
-      const { data: users } = await supabase.from("user_account").select("id,legacy_id,username,avatar_url").in("id", Array.from(neededIds))
+      const { data: users } = await supabase.from("user_account").select("id,legacy_id,username").in("id", Array.from(neededIds))
       const userMap = new Map<string, any>()
       for (const u of users || []) {
         userMap.set(String((u as any).id), u)
@@ -374,8 +374,7 @@ serve(async (req: Request): Promise<Response> => {
         const u = userMap.get(String(it.user_id))
         return {
           ...it,
-          name: (u as any)?.username || "Unknown",
-          avatar: (u as any)?.avatar_url || null
+          name: (u as any)?.username || "Unknown"
         }
       })
 
@@ -384,8 +383,7 @@ serve(async (req: Request): Promise<Response> => {
         const u = userMap.get(String(current_user_rank.user_id))
         current_user_rank = {
           ...current_user_rank,
-          name: (u as any)?.username || "Unknown",
-          avatar: (u as any)?.avatar_url || null
+          name: (u as any)?.username || "Unknown"
         }
       }
 
@@ -427,7 +425,7 @@ serve(async (req: Request): Promise<Response> => {
       }
 
       // Fetch details for only these users
-      const { data: users } = await supabase.from("user_account").select("id,legacy_id,username,avatar_url").in("id", Array.from(neededIds))
+      const { data: users } = await supabase.from("user_account").select("id,legacy_id,username").in("id", Array.from(neededIds))
       const userMap = new Map<string, any>()
       for (const u of users || []) {
         userMap.set(String((u as any).id), u)
@@ -441,7 +439,6 @@ serve(async (req: Request): Promise<Response> => {
         return {
           ...it,
           name: (u as any)?.username || "Unknown",
-          avatar: (u as any)?.avatar_url || null,
           value: val,
           formatted_value: String(val)
         }
@@ -454,7 +451,6 @@ serve(async (req: Request): Promise<Response> => {
         current_user_rank = {
           ...current_user_rank,
           name: (u as any)?.username || "Unknown",
-          avatar: (u as any)?.avatar_url || null,
           value: val,
           formatted_value: String(val)
         }
@@ -500,7 +496,7 @@ serve(async (req: Request): Promise<Response> => {
       }
 
       // Fetch details for only these users
-      const { data: users } = await supabase.from("user_account").select("id,legacy_id,username,avatar_url").in("id", Array.from(neededIds))
+      const { data: users } = await supabase.from("user_account").select("id,legacy_id,username").in("id", Array.from(neededIds))
       const userMap = new Map<string, any>()
       for (const u of users || []) {
         userMap.set(String((u as any).id), u)
@@ -514,7 +510,6 @@ serve(async (req: Request): Promise<Response> => {
         return {
           ...it,
           name: (u as any)?.username || "Unknown",
-          avatar: (u as any)?.avatar_url || null,
           value: val,
           formatted_value: val + "%"
         }
@@ -527,7 +522,6 @@ serve(async (req: Request): Promise<Response> => {
         current_user_rank = {
           ...current_user_rank,
           name: (u as any)?.username || "Unknown",
-          avatar: (u as any)?.avatar_url || null,
           value: val,
           formatted_value: val + "%"
         }
