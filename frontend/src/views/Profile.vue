@@ -434,6 +434,27 @@ const confirmCrop = () => {
         throw new Error('Supabase client not initialized')
       }
 
+      // 删除旧头像文件
+      try {
+        const prefix = `avatar_${authStore.user.id}_`
+        const { data: files, error: listError } = await supabase.storage
+          .from('avatars')
+          .list('', {
+            search: prefix
+          })
+        
+        if (!listError && files && files.length > 0) {
+          const filesToDelete = files.map(f => f.name)
+          await supabase.storage
+            .from('avatars')
+            .remove(filesToDelete)
+          console.log(`Deleted ${filesToDelete.length} old avatar(s)`)
+        }
+      } catch (cleanupError) {
+        console.warn('Failed to cleanup old avatars:', cleanupError)
+        // 继续上传，即使清理失败
+      }
+
       const fileName = `avatar_${authStore.user.id}_${Date.now()}.png`
       const { data, error } = await supabase.storage
         .from('avatars')

@@ -4,6 +4,7 @@ uvicorn==0.24.0
 sqlalchemy==2.0.41
 pydantic==2.9.2
 python-dotenv==1.0.0
+httpx==0.25.2
 # （可选）PostgreSQL驱动：开发用 SQLite，无需安装
 # psycopg2-binary==2.9.9
 # 数据库迁移工具（已移除 Alembic，如需迁移请自行添加）

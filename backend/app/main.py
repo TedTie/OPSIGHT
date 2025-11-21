@@ -509,6 +509,34 @@ async def update_current_user_info(
     db.commit()
     db.refresh(current_user)
     
+    # Sync avatar_url to Supabase user_account table if it was updated
+    if "avatar_url" in user_request.dict(exclude_unset=True):
+        try:
+            import httpx
+            supabase_url = os.getenv("VITE_SUPABASE_URL") or os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SERVICE_ROLE_KEY")
+            
+            if supabase_url and supabase_key:
+                async with httpx.AsyncClient() as client:
+                    # Update user_account table using Supabase REST API
+                    response = await client.patch(
+                        f"{supabase_url}/rest/v1/user_account?id=eq.{current_user.auth_uid}",
+                        json={"avatar_url": current_user.avatar_url},
+                        headers={
+                            "apikey": supabase_key,
+                            "Authorization": f"Bearer {supabase_key}",
+                            "Content-Type": "application/json",
+                            "Prefer": "return=minimal"
+                        }
+                    )
+                    if response.status_code not in [200, 204]:
+                        logging.warning(f"Failed to sync avatar_url to Supabase: {response.text}")
+            else:
+                logging.warning("Supabase credentials not configured, skipping avatar sync")
+        except Exception as e:
+            logging.error(f"Error syncing avatar_url to Supabase: {str(e)}")
+            # Don't fail the whole request if Supabase sync fails
+    
     return UserResponse(
         id=current_user.id,
         username=current_user.username,
