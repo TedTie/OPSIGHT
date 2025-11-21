@@ -358,30 +358,6 @@ class UserCreateRequest(BaseModel):
     is_active: Optional[bool] = True
 
 class UserUpdateRequest(BaseModel):
-    role: Optional[str] = None
-    identity_type: Optional[str] = None
-    organization: Optional[str] = None
-    group_id: Optional[int] = None
-    is_active: Optional[bool] = None
-    # 新增：支持更新密码（留空不修改）
-    password: Optional[str] = None
-
-class UserResponse(BaseModel):
-    id: int
-    username: str
-    role: str
-    identity_type: Optional[str] = None
-    full_identity: str
-    ai_knowledge_branch: str
-    organization: Optional[str] = None
-    group_id: Optional[int] = None
-    group_name: Optional[str] = None
-    is_active: bool
-    is_admin: bool = False
-    is_super_admin: bool = False
-    created_at: datetime
-
-    class Config:
         from_attributes = True
 
 class LoginRequest(BaseModel):

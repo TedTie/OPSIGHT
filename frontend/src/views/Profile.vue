@@ -9,9 +9,21 @@
     <el-card class="content-card user-overview">
       <div class="user-info-header">
         <div class="user-avatar-section">
-          <el-avatar :size="80" class="user-avatar">
-            {{ userInitials }}
-          </el-avatar>
+          <div class="avatar-wrapper" @click="triggerFileInput" :class="{ 'is-editable': isEditing }">
+            <el-avatar :size="80" :src="userForm.avatar_url || authStore.user?.avatar_url" class="user-avatar">
+              {{ userInitials }}
+            </el-avatar>
+            <div v-if="isEditing" class="avatar-overlay">
+              <i class="el-icon-camera">📷</i>
+            </div>
+            <input
+              ref="fileInput"
+              type="file"
+              accept="image/png, image/jpeg"
+              style="display: none"
+              @change="handleFileChange"
+            />
+          </div>
           <div class="user-basic-info">
             <h2>{{ authStore.user?.full_name || authStore.user?.username }}</h2>
             <div class="user-meta">
@@ -28,6 +40,43 @@
           </el-tag>
         </div>
       </div>
+    </el-card>
+
+    <!-- 图片裁剪弹窗 -->
+    <el-dialog
+      v-model="showCropper"
+      title="修改头像"
+      width="600px"
+      :close-on-click-modal="false"
+    >
+      <div style="height: 400px">
+        <vue-cropper
+          ref="cropperRef"
+          :img="cropOption.img"
+          :output-size="cropOption.size"
+          :output-type="cropOption.outputType"
+          :info="true"
+          :full="cropOption.full"
+          :can-move="cropOption.canMove"
+          :can-move-box="cropOption.canMoveBox"
+          :fixed-box="cropOption.fixedBox"
+          :original="cropOption.original"
+          :auto-crop="cropOption.autoCrop"
+          :auto-crop-width="cropOption.autoCropWidth"
+          :auto-crop-height="cropOption.autoCropHeight"
+          :center-box="cropOption.centerBox"
+          :high="cropOption.high"
+        />
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="showCropper = false">取消</el-button>
+          <el-button type="primary" @click="confirmCrop" :loading="uploadLoading">
+            确认并上传
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
     </el-card>
 
     <!-- 详细信息 -->
@@ -160,6 +209,14 @@ import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { formatUserRole, getUserRoleColor } from '@/utils/auth'
 import api from '@/utils/api'
+import 'vue-cropper/dist/index.css'
+import { VueCropper } from "vue-cropper"
+import { createClient } from '@supabase/supabase-js'
+
+// Supabase Client
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null
 
 // Store
 const authStore = useAuthStore()
@@ -168,7 +225,8 @@ const authStore = useAuthStore()
 const userForm = reactive({
   username: '',
   email: '',
-  full_name: ''
+  full_name: '',
+  avatar_url: ''
 })
 
 const userStats = reactive({
@@ -176,6 +234,28 @@ const userStats = reactive({
   completedTasks: 0,
   totalReports: 0,
   avgMood: null
+})
+
+// 头像上传相关
+const showCropper = ref(false)
+const cropperImg = ref('')
+const cropperRef = ref()
+const uploadLoading = ref(false)
+const fileInput = ref()
+const cropOption = reactive({
+  img: '',
+  size: 1,
+  full: false,
+  outputType: 'png',
+  canMove: true,
+  fixedBox: false,
+  original: false,
+  canMoveBox: true,
+  autoCrop: true,
+  autoCropWidth: 200,
+  autoCropHeight: 200,
+  centerBox: true,
+  high: true
 })
 
 // userGroup变量已移除，直接使用authStore.user.group_name
@@ -240,6 +320,7 @@ const initUserForm = () => {
     userForm.username = authStore.user.username || ''
     userForm.email = authStore.user.email || ''
     userForm.full_name = authStore.user.full_name || ''
+    userForm.avatar_url = authStore.user.avatar_url || ''
   }
 }
 
@@ -291,6 +372,77 @@ const cancelEdit = () => {
   profileFormRef.value?.clearValidate()
 }
 
+// 头像上传逻辑
+const triggerFileInput = () => {
+  if (!isEditing.value) return
+  fileInput.value.click()
+}
+
+const handleFileChange = (e) => {
+  const file = e.target.files[0]
+  if (!file) return
+  
+  // 验证文件类型
+  const isJPG = file.type === 'image/jpeg' || file.type === 'image/png'
+  const isLt2M = file.size / 1024 / 1024 < 2
+
+  if (!isJPG) {
+    ElMessage.error('上传头像图片只能是 JPG/PNG 格式!')
+    return
+  }
+  if (!isLt2M) {
+    ElMessage.error('上传头像图片大小不能超过 2MB!')
+    return
+  }
+
+  // 读取文件
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    cropOption.img = e.target.result
+    showCropper.value = true
+  }
+  reader.readAsDataURL(file)
+  // 清空 input，允许重复选择同一文件
+  e.target.value = ''
+}
+
+const confirmCrop = () => {
+  cropperRef.value.getCropBlob(async (blob) => {
+    if (!blob) return
+    
+    uploadLoading.value = true
+    try {
+      if (!supabase) {
+        throw new Error('Supabase client not initialized')
+      }
+
+      const fileName = `avatar_${authStore.user.id}_${Date.now()}.png`
+      const { data, error } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, blob, {
+          contentType: 'image/png',
+          upsert: true
+        })
+
+      if (error) throw error
+
+      // 获取公开链接
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName)
+
+      userForm.avatar_url = publicUrl
+      showCropper.value = false
+      ElMessage.success('头像上传成功，请点击保存以生效')
+    } catch (error) {
+      console.error('Upload failed:', error)
+      ElMessage.error('头像上传失败: ' + (error.message || '未知错误'))
+    } finally {
+      uploadLoading.value = false
+    }
+  })
+}
+
 // 保存个人资料
 const saveProfile = async () => {
   if (!profileFormRef.value) return
@@ -302,13 +454,11 @@ const saveProfile = async () => {
     // 调用API更新用户信息
     const updateData = {
       email: userForm.email,
-      full_name: userForm.full_name
+      full_name: userForm.full_name,
+      avatar_url: userForm.avatar_url
     }
     
-    // await api.put('/user/me', updateData)
-    
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await api.put('/users/me', updateData)
     
     // 更新store中的用户信息
     await authStore.fetchUserInfo()
@@ -317,7 +467,7 @@ const saveProfile = async () => {
     isEditing.value = false
   } catch (error) {
     if (error.message) {
-      ElMessage.error('表单验证失败')
+      // ElMessage.error('表单验证失败')
     } else {
       ElMessage.error('保存失败')
       console.error('保存失败:', error)
@@ -402,6 +552,36 @@ onMounted(() => {
   font-size: 24px;
   font-weight: 600;
   border: 3px solid rgba(255, 255, 255, 0.3);
+}
+
+.avatar-wrapper {
+  position: relative;
+  cursor: default;
+}
+
+.avatar-wrapper.is-editable {
+  cursor: pointer;
+}
+
+.avatar-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  font-size: 24px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.avatar-wrapper.is-editable:hover .avatar-overlay {
+  opacity: 1;
 }
 
 .user-basic-info h2 {

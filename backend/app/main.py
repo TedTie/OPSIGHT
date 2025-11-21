@@ -140,6 +140,26 @@ def _ensure_users_password_column():
 
 _ensure_users_password_column()
 
+# 运行时迁移：确保 users 表存在 avatar_url 列
+def _ensure_users_avatar_column():
+    try:
+        from sqlalchemy import inspect
+        inspector = inspect(engine)
+        cols = [c['name'] for c in inspector.get_columns('users')]
+        
+        if "avatar_url" not in cols:
+            try:
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN avatar_url TEXT;"))
+                    conn.commit()
+                    logger.info("Added column users.avatar_url")
+            except Exception as e:
+                logger.warning(f"Failed to add users.avatar_url: {e}")
+    except Exception as e:
+        logger.warning(f"Users avatar_url column ensure failed: {e}")
+
+_ensure_users_avatar_column()
+
 def _ensure_default_admin_user():
     try:
         db = SessionLocal()
@@ -439,6 +459,67 @@ async def get_current_user_info(current_user: User = Depends(get_current_active_
         organization=current_user.organization,
         group_id=current_user.group_id,
         group_name=current_user.group.name if current_user.group else None,
+        is_active=current_user.is_active,
+        is_admin=current_user.is_admin,
+        is_super_admin=current_user.is_super_admin,
+        created_at=current_user.created_at
+    )
+
+@app.put("/api/v1/users/me", response_model=UserResponse)
+async def update_current_user_info(
+    user_request: UserUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """更新当前用户信息"""
+    # 用户只能更新部分字段
+    update_data = user_request.dict(exclude_unset=True)
+    
+    # 允许更新的字段：password, avatar_url, email (暂不开放role等敏感字段)
+    allowed_fields = ["password", "avatar_url", "email", "full_name"] # full_name if exists in model, but schema doesn't have it in UserUpdateRequest yet? Wait, schema UserUpdateRequest definition:
+    # UserUpdateRequest has: role, identity_type, organization, group_id, is_active, password, avatar_url.
+    # We should restrict what regular users can update.
+    
+    # Check if user is trying to update restricted fields
+    restricted_fields = ["role", "identity_type", "organization", "group_id", "is_active"]
+    if not current_user.is_super_admin:
+        for field in restricted_fields:
+            if field in update_data:
+                # Instead of raising error, just ignore or remove them? 
+                # Better to ignore to avoid frontend complexity if they send full object.
+                # But strictly speaking, we should probably just pop them.
+                update_data.pop(field)
+
+    # Handle password update
+    if "password" in update_data:
+        pwd = update_data.pop("password")
+        if pwd:
+            if len(pwd) < 6:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="密码长度至少6位"
+                )
+            current_user.hashed_password = get_password_hash(pwd)
+
+    # Update other fields
+    for field, value in update_data.items():
+        if hasattr(current_user, field):
+             setattr(current_user, field, value)
+    
+    db.commit()
+    db.refresh(current_user)
+    
+    return UserResponse(
+        id=current_user.id,
+        username=current_user.username,
+        role=current_user.role,
+        identity_type=current_user.identity_type,
+        full_identity=current_user.get_full_identity(),
+        ai_knowledge_branch=current_user.get_ai_knowledge_branch(),
+        organization=current_user.organization,
+        group_id=current_user.group_id,
+        group_name=current_user.group.name if current_user.group else None,
+        avatar_url=current_user.avatar_url,
         is_active=current_user.is_active,
         is_admin=current_user.is_admin,
         is_super_admin=current_user.is_super_admin,

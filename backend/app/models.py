@@ -76,18 +76,6 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    username = Column(String(50), unique=True, index=True, nullable=False)
-    # 用于存储密码哈希（bcrypt），不返回到接口
-    hashed_password = Column(String(255), nullable=True)
-    role = Column(String(20), nullable=False, default='user')  # super_admin, admin, user
-    identity_type = Column(String(10), nullable=True)  # cc, ss, lp (普通用户和管理员必须有身份类型)
-    organization = Column(String(100), nullable=True)  # 组织名称
-    group_id = Column(Integer, ForeignKey("user_groups.id"), nullable=True)  # 用户组ID
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-
-    # Relationships
     group = relationship("UserGroup", back_populates="members")
 
     @property
