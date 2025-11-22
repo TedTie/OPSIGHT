@@ -7,7 +7,7 @@
     <div class="sidebar-container glass-panel">
       <!-- Logo Area -->
       <div class="sidebar-logo">
-        <img src="@/assets/logo.png" alt="Logo" class="logo-img" />
+        <img src="@/assets/logo.svg" alt="OPSIGHT" class="sidebar-logo-img" />
         <span v-if="!collapsed" class="logo-text">OPSIGHT</span>
       </div>
 

@@ -3,7 +3,7 @@
     <div class="login-card glass-panel">
       <div class="login-header">
         <div class="logo-container">
-          <img src="@/assets/logo.png" alt="OPSIGHT Logo" class="login-logo" />
+          <img src="@/assets/logo.svg" alt="OPSIGHT Logo" class="login-logo" />
         </div>
         <h1>OPSIGHT</h1>
         <p>智能任务与日报管理系统</p>
