@@ -110,39 +110,79 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if (afterFn.startsWith("api/v1/users/me") && req.method === "PUT") {
-    const name = String(u.searchParams.get("u") || "").trim()
-    if (!name) return json({ detail: "未认证" }, 401)
+    try {
+      const name = String(u.searchParams.get("u") || "").trim()
+      if (!name) return json({ detail: "未认证: 缺少用户名参数" }, 401)
 
-    const body = await parseBody(req)
-    const updateData: any = {}
+      const body = await parseBody(req)
+      const updateData: any = {}
 
-    // Only allow updating specific fields
-    if (body.avatar_url !== undefined) updateData.avatar_url = body.avatar_url
-    if (body.email !== undefined) updateData.email = body.email
-    if (body.full_name !== undefined) updateData.full_name = body.full_name
+      // Only allow updating specific fields
+      if (body.avatar_url !== undefined) updateData.avatar_url = body.avatar_url
+      if (body.email !== undefined) updateData.email = body.email
+      if (body.full_name !== undefined) updateData.full_name = body.full_name
 
-    if (Object.keys(updateData).length === 0) {
-      return json({ detail: "No valid fields to update" }, 400)
+      if (Object.keys(updateData).length === 0) {
+        return json({ detail: "没有有效的更新字段" }, 400)
+      }
+
+      console.log(`[Update] Updating user ${name} with data:`, JSON.stringify(updateData))
+
+      // 1. Try direct update (works if Service Role Key is used)
+      const { error: updateError } = await supabase
+        .from("user_account")
+        .update(updateData)
+        .eq("username", name)
+
+      if (updateError) {
+        console.error("Update user error (Direct):", updateError)
+
+        // 2. If direct update fails (e.g. RLS), try RPC (works if Anon Key is used and RPC is set up)
+        // We need auth_uid for RPC. Fetch it first.
+        const { data: userData, error: fetchError } = await supabase
+          .from("user_account")
+          .select("auth_uid")
+          .eq("username", name)
+          .single()
+
+        if (fetchError || !userData) {
+          console.error("Fetch user for RPC failed:", fetchError)
+          return json({ detail: `更新失败: ${updateError.message} (且无法获取用户ID)` }, 500)
+        }
+
+        if (updateData.avatar_url) {
+          const { error: rpcError } = await supabase.rpc('update_avatar_url', {
+            target_auth_uid: userData.auth_uid,
+            new_avatar_url: updateData.avatar_url
+          })
+
+          if (rpcError) {
+            console.error("Update user error (RPC):", rpcError)
+            return json({ detail: `更新失败 (RPC): ${rpcError.message}` }, 500)
+          }
+        } else {
+          // If updating other fields and direct update failed, we are stuck unless we add more RPCs
+          return json({ detail: `更新失败: ${updateError.message}` }, 500)
+        }
+      }
+
+      // Return updated user info
+      const { data: updatedUser, error: refreshError } = await supabase
+        .from("user_account")
+        .select("id,username,role,identity_type,group_id,group_name,is_active,created_at,avatar_url")
+        .eq("username", name)
+        .single()
+
+      if (refreshError) {
+        console.error("Refresh user error:", refreshError)
+        return json({ detail: "更新成功但无法刷新数据" }, 500)
+      }
+
+      return json(updatedUser)
+    } catch (e: any) {
+      console.error("Unexpected error in PUT /users/me:", e)
+      return json({ detail: `服务器内部错误: ${e.message}` }, 500)
     }
-
-    const { error } = await supabase
-      .from("user_account")
-      .update(updateData)
-      .eq("username", name)
-
-    if (error) {
-      console.error("Update user error:", error)
-      return json({ detail: "Update failed" }, 500)
-    }
-
-    // Return updated user info
-    const { data: updatedUser } = await supabase
-      .from("user_account")
-      .select("id,username,role,identity_type,group_id,group_name,is_active,created_at,avatar_url")
-      .eq("username", name)
-      .single()
-
-    return json(updatedUser)
   }
 
   if (afterFn.startsWith("api/v1/analytics/summary") && req.method === "GET") {
