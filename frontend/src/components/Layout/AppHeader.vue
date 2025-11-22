@@ -451,14 +451,10 @@ onUnmounted(() => {
   padding: 0 24px;
   height: 60px;
   
-  /* 磨砂玻璃效果 */
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(16, 185, 129, 0.15);
-  box-shadow: 
-    0 4px 20px rgba(0, 0, 0, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  /* 白色背景 */
+  background: #ffffff;
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
   
   position: sticky;
   top: 0;

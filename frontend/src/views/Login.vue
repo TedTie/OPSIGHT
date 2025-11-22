@@ -125,20 +125,17 @@ const handleLogin = async () => {
   padding: 20px;
   position: relative;
   overflow: hidden;
-  background: var(--bg-page);
+  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 50%, #d1fae5 100%);
 }
 
-/* 动态渐变背景 */
+/* 轻盈装饰 */
 .login-container::before {
   content: '';
   position: absolute;
   inset: 0;
   background: 
-    radial-gradient(circle at 20% 30%, rgba(16, 185, 129, 0.15) 0%, transparent 50%),
-    radial-gradient(circle at 80% 70%, rgba(110, 231, 183, 0.12) 0%, transparent 50%),
-    radial-gradient(circle at 50% 50%, rgba(20, 184, 166, 0.1) 0%, transparent 70%);
-  animation: gradient-shift 15s ease infinite;
-  background-size: 200% 200%;
+    radial-gradient(circle at 20% 30%, rgba(16, 185, 129, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 80% 70%, rgba(110, 231, 183, 0.06) 0%, transparent 50%);
 }
 
 /* 浮动几何装饰 */
@@ -150,7 +147,7 @@ const handleLogin = async () => {
   border-radius: 50%;
   top: -200px;
   right: -200px;
-  background: radial-gradient(circle, rgba(16, 185, 129, 0.08) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.05) 0%, transparent 70%);
   animation: float 20s ease-in-out infinite;
 }
 
@@ -160,22 +157,18 @@ const handleLogin = async () => {
 }
 
 .login-card {
-  width: 100%
-;
+  width: 100%;
   max-width: 420px;
   position: relative;
   z-index: 1;
   
-  /* 玻璃拟态 2.0 */
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  /* 明亮卡片 */
+  background: #ffffff;
   border-radius: var(--radius-2xl);
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(16, 185, 129, 0.15);
   box-shadow: 
-    0 20px 60px rgba(0, 0, 0, 0.3),
-    0 0 80px rgba(16, 185, 129, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    0 20px 60px rgba(15, 23, 42, 0.12),
+    0 0 0 1px rgba(16, 185, 129, 0.1);
   
   padding: 48px 40px;
   text-align: center;
@@ -183,26 +176,11 @@ const handleLogin = async () => {
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* 卡片内发光 */
-.login-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(
-    135deg,
-    rgba(16, 185, 129, 0.1) 0%,
-    transparent 50%,
-    rgba(110, 231, 183, 0.05) 100%
-  );
-  pointer-events: none;
-}
-
 .login-card:hover {
-  border-color: rgba(16, 185, 129, 0.4);
+  border-color: rgba(16, 185, 129, 0.3);
   box-shadow: 
-    0 24px 70px rgba(0, 0, 0, 0.35),
-    0 0 100px rgba(16, 185, 129, 0.3);
+    0 24px 70px rgba(15, 23, 42, 0.15),
+    0 0 0 1px rgba(16, 185, 129, 0.2);
   transform: translateY(-4px);
 }
 
@@ -255,25 +233,20 @@ const handleLogin = async () => {
 }
 
 :deep(.el-input__wrapper) {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(16, 185, 129, 0.15);
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
   transition: all 0.3s ease;
 }
 
 :deep(.el-input__wrapper:hover) {
-  border-color: rgba(16, 185, 129, 0.3);
-  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-color-hover);
 }
 
 /* 聚焦时的绿色发光 */
 :deep(.el-input__wrapper.is-focus) {
   border-color: var(--color-primary);
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: 
-    0 0 0 3px rgba(16, 185, 129, 0.15),
-    0 0 20px rgba(16, 185, 129, 0.3),
-    inset 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-glow);
 }
 
 :deep(.el-input__inner) {
@@ -282,7 +255,7 @@ const handleLogin = async () => {
 }
 
 :deep(.el-input__inner::placeholder) {
-  color: var(--text-muted);
+  color: var(--text-disabled);
 }
 
 /* Checkbox样式 */
@@ -300,18 +273,14 @@ const handleLogin = async () => {
   
   background: var(--gradient-primary);
   border: none;
-  box-shadow: 
-    0 4px 15px rgba(16, 185, 129, 0.3),
-    0 0 20px rgba(16, 185, 129, 0.2);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
   
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .login-button:hover {
   transform: translateY(-2px);
-  box-shadow: 
-    0 8px 25px rgba(16, 185, 129, 0.4),
-    0 0 30px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 8px 20px rgba(16, 185, 129, 0.35);
 }
 
 .login-button:active {
@@ -321,7 +290,7 @@ const handleLogin = async () => {
 .login-footer {
   margin-top: 32px;
   padding-top: 24px;
-  border-top: 1px solid rgba(16, 185, 129, 0.1);
+  border-top: 1px solid var(--border-color);
 }
 
 .login-footer p {

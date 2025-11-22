@@ -1,76 +1,98 @@
 /* ====================================
-   2025 现代设计系统 - 绿色主题
+   2025 现代设计系统 - 明亮绿色主题
    ==================================== */
 
 :root {
-  /* ========== 现代绿色配色系统 ========== */
-  
-  /* 主色调：高级绿色渐变 */
-  --color-primary: #10b981;        /* Emerald 500 - 主绿色 */
-  --color-primary-light: #34d399;  /* Emerald 400 - 亮绿 */
-  --color-primary-dark: #059669;   /* Emerald 600 - 深绿 */
-  
+  /* ========== 现代绿色配色系统 - 明亮版 ========== */
+
+  /* 主色调：清新绿色渐变 */
+  --color-primary: #10b981;
+  /* Emerald 500 - 主绿色 */
+  --color-primary-light: #34d399;
+  /* Emerald 400 - 亮绿 */
+  --color-primary-dark: #059669;
+  /* Emerald 600 - 深绿 */
+
   /* Accent色彩：绿色系变体 */
-  --color-accent-mint: #6ee7b7;    /* 薄荷绿 Emerald 300 */
-  --color-accent-teal: #14b8a6;    /* 青绿 Teal 500 */
-  --color-accent-lime: #84cc16;    /* 青柠绿 Lime 500 */
-  --color-accent-cyan: #06b6d4;    /* 蓝绿 Cyan 500 */
-  
+  --color-accent-mint: #6ee7b7;
+  /* 薄荷绿 Emerald 300 */
+  --color-accent-teal: #14b8a6;
+  /* 青绿 Teal 500 */
+  --color-accent-lime: #84cc16;
+  /* 青柠绿 Lime 500 */
+  --color-accent-cyan: #06b6d4;
+  /* 蓝绿 Cyan 500 */
+
   /* 语义色 */
   --color-success: #22c55e;
   --color-warning: #f59e0b;
   --color-error: #ef4444;
   --color-info: #3b82f6;
-  
+
   /* 渐变系统 - 绿色为主 */
-  --gradient-primary: linear-gradient(135deg, #10b981 0%, #059669 100%);        /* 经典绿 */
-  --gradient-emerald: linear-gradient(135deg, #34d399 0%, #10b981 100%);        /* 翡翠绿 */
-  --gradient-nature: linear-gradient(135deg, #6ee7b7 0%, #14b8a6 100%);         /* 自然绿 */
-  --gradient-cyber-green: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);    /* 科技绿 */
-  --gradient-lime: linear-gradient(135deg, #84cc16 0%, #10b981 100%);           /* 活力绿 */
-  
-  /* 背景：深色但带绿色调 */
-  --bg-page: #0a1612;              /* 深绿黑 - 微带绿调 */
-  --bg-elevated: #0f1f1a;          /* 次级背景 - 绿调 */
-  --surface: rgba(16, 185, 129, 0.08); /* 半透明绿色表面 */
-  --surface-hover: rgba(16, 185, 129, 0.12);
-  
-  /* 中性色与文本 */
-  --text-strong: #f9fafb;          /* Gray 50 - 强文本 */
-  --text-normal: #e5e7eb;          /* Gray 200 - 普通文本 */
-  --text-muted: #9ca3af;           /* Gray 400 - 次要文本 */
-  --text-disabled: #6b7280;        /* Gray 500 - 禁用文本 */
-  
+  --gradient-primary: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  /* 经典绿 */
+  --gradient-emerald: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  /* 翡翠绿 */
+  --gradient-nature: linear-gradient(135deg, #6ee7b7 0%, #14b8a6 100%);
+  /* 自然绿 */
+  --gradient-cyber-green: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
+  /* 科技绿 */
+  --gradient-lime: linear-gradient(135deg, #84cc16 0%, #10b981 100%);
+  /* 活力绿 */
+
+  /* 背景：明亮清新 */
+  --bg-page: #f8fafb;
+  /* 浅灰白 */
+  --bg-elevated: #ffffff;
+  /* 纯白 */
+  --bg-soft: #f0f4f8;
+  /* 柔和灰 */
+  --surface: #ffffff;
+  /* 白色表面 */
+  --surface-hover: #f8fafb;
+  /* 悬浮表面 */
+
+  /* 中性色与文本 - 深色文字 */
+  --text-strong: #0f172a;
+  /* Slate 900 - 强文本 */
+  --text-normal: #334155;
+  /* Slate 700 - 普通文本 */
+  --text-muted: #64748b;
+  /* Slate 500 - 次要文本 */
+  --text-disabled: #94a3b8;
+  /* Slate 400 - 禁用文本 */
+
+  /* 边框色 */
+  --border-color: #e2e8f0;
+  /* Slate 200 */
+  --border-color-hover: #cbd5e1;
+  /* Slate 300 */
+
   /* ========== 排版系统 ========== */
   --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-weight-regular: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
-  
+
   /* ========== 圆角系统 ========== */
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-xl: 20px;
   --radius-2xl: 24px;
-  
-  /* ========== 阴影系统 - 立体与发光 ========== */
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.12);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.15);
-  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.2);
-  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.25);
-  
-  /* 绿色发光效果 */
-  --shadow-glow: 0 0 40px rgba(16, 185, 129, 0.4);
-  --shadow-glow-strong: 0 0 60px rgba(16, 185, 129, 0.6);
-  --shadow-glow-soft: 0 0 20px rgba(16, 185, 129, 0.3);
-  
-  /* ========== 气泡背景（非侵入式装饰层）========== */
-  --bubble-1: rgba(16, 185, 129, 0.08);  /* 绿 */
-  --bubble-2: rgba(110, 231, 183, 0.06); /* 薄荷绿 */
-  --bubble-3: rgba(20, 184, 166, 0.07);  /* 青绿 */
-  
+
+  /* ========== 阴影系统 - 柔和自然 ========== */
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08), 0 2px 4px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 10px 24px rgba(15, 23, 42, 0.1), 0 4px 8px rgba(15, 23, 42, 0.06);
+  --shadow-xl: 0 20px 40px rgba(15, 23, 42, 0.12), 0 8px 16px rgba(15, 23, 42, 0.08);
+
+  /* 绿色发光效果 - 柔和版 */
+  --shadow-glow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+  --shadow-glow-strong: 0 0 0 4px rgba(16, 185, 129, 0.2);
+
   /* ========== Element Plus 主题变量覆盖 ========== */
   --el-color-primary: var(--color-primary);
   --el-color-success: var(--color-success);
@@ -80,6 +102,8 @@
   --el-box-shadow-light: var(--shadow-sm);
   --el-box-shadow: var(--shadow-md);
   --el-box-shadow-dark: var(--shadow-lg);
+  --el-bg-color: var(--bg-elevated);
+  --el-bg-color-page: var(--bg-page);
 }
 
 /* ====================================
@@ -92,7 +116,8 @@
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   font-family: var(--font-family);
   background-color: var(--bg-page);
@@ -117,9 +142,10 @@ html, body {
   background-clip: text;
 }
 
-/* 气泡背景 */
+/* 轻量背景点缀 */
 .bubble-bg {
   position: relative;
+  background: var(--bg-page);
 }
 
 .bubble-bg::before {
@@ -129,38 +155,60 @@ html, body {
   pointer-events: none;
   z-index: 0;
   background:
-    radial-gradient(1200px 800px at -10% 10%, var(--bubble-1), transparent 40%),
-    radial-gradient(800px 600px at 120% 20%, var(--bubble-2), transparent 45%),
-    radial-gradient(600px 600px at 50% -20%, var(--bubble-3), transparent 50%);
+    radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.04) 0%, transparent 50%),
+    radial-gradient(circle at 90% 80%, rgba(110, 231, 183, 0.03) 0%, transparent 50%);
 }
 
-.bubble-bg > * {
+.bubble-bg>* {
   position: relative;
   z-index: 1;
 }
 
 /* 文本对齐 */
-.text-center { text-align: center; }
-.text-right { text-align: right; }
-.text-left { text-align: left; }
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.text-left {
+  text-align: left;
+}
 
 /* 间距工具 */
-.mb-16 { margin-bottom: 16px; }
-.mb-24 { margin-bottom: 24px; }
-.mt-16 { margin-top: 16px; }
-.mt-24 { margin-top: 24px; }
+.mb-16 {
+  margin-bottom: 16px;
+}
+
+.mb-24 {
+  margin-bottom: 24px;
+}
+
+.mt-16 {
+  margin-top: 16px;
+}
+
+.mt-24 {
+  margin-top: 24px;
+}
 
 /* 响应式工具 */
 @media (max-width: 768px) {
-  .hidden-mobile { display: none !important; }
+  .hidden-mobile {
+    display: none !important;
+  }
 }
 
 @media (min-width: 769px) {
-  .hidden-desktop { display: none !important; }
+  .hidden-desktop {
+    display: none !important;
+  }
 }
 
 /* ====================================
-   滚动条样式 - 现代化
+   滚动条样式 - 明亮版
    ==================================== */
 
 ::-webkit-scrollbar {
@@ -169,49 +217,32 @@ html, body {
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-soft);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(16, 185, 129, 0.3);
+  background: #cbd5e1;
   border-radius: 4px;
   transition: background 0.2s;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(16, 185, 129, 0.5);
+  background: #94a3b8;
 }
 
 /* ====================================
-   玻璃拟态 2.0 - 轻量精致版
+   现代卡片样式
    ==================================== */
 
 .glass-card {
   position: relative;
   border-radius: var(--radius-xl);
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(16, 185, 129, 0.15);
-  box-shadow: var(--shadow-md), var(--shadow-glow-soft);
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-md);
   padding: 20px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.glass-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  background: linear-gradient(
-    135deg,
-    rgba(16, 185, 129, 0.1) 0%,
-    transparent 50%,
-    rgba(16, 185, 129, 0.05) 100%
-  );
-  opacity: 0.5;
 }
 
 .glass-card:hover {
@@ -225,47 +256,24 @@ html, body {
    ==================================== */
 
 .el-card {
-  position: relative;
   border-radius: var(--radius-xl) !important;
-  background: rgba(255, 255, 255, 0.05) !important;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(16, 185, 129, 0.15) !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--border-color) !important;
   box-shadow: var(--shadow-md) !important;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.el-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  background: linear-gradient(
-    135deg,
-    rgba(16, 185, 129, 0.08) 0%,
-    transparent 50%
-  );
-  opacity: 0.6;
-}
-
 .el-card:hover {
-  border-color: rgba(16, 185, 129, 0.25) !important;
-  box-shadow: var(--shadow-lg), var(--shadow-glow-soft) !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+  box-shadow: var(--shadow-lg) !important;
 }
 
 /* 卡片头部 */
 .el-card__header {
-  background: transparent !important;
-  border-bottom: 1px solid rgba(16, 185, 129, 0.1) !important;
+  background: var(--surface) !important;
+  border-bottom: 1px solid var(--border-color) !important;
   color: var(--text-strong) !important;
   font-weight: var(--font-weight-semibold);
-}
-
-/* 卡片主体 */
-.el-card__body {
-  position: relative;
-  z-index: 1;
 }
 
 /* ====================================
@@ -281,12 +289,12 @@ html, body {
 .el-button--primary {
   background: var(--gradient-primary);
   border: none;
-  box-shadow: var(--shadow-glow-soft);
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
 }
 
 .el-button--primary:hover {
   transform: translateY(-2px);
-  box-shadow: var(--shadow-glow);
+  box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
 }
 
 .el-button--primary:active {
@@ -299,18 +307,19 @@ html, body {
 
 .el-input__wrapper {
   border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(16, 185, 129, 0.1);
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
   transition: all 0.3s ease;
 }
 
 .el-input__wrapper:hover {
-  border-color: rgba(16, 185, 129, 0.2);
+  border-color: var(--border-color-hover);
 }
 
 .el-input__wrapper.is-focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+  box-shadow: var(--shadow-glow);
 }
 
 .el-select .el-input__wrapper {
@@ -329,21 +338,22 @@ html, body {
 .el-table {
   border-radius: var(--radius-md);
   overflow: hidden;
-  background: transparent !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--border-color);
 }
 
 .el-table th.el-table__cell {
-  background: rgba(16, 185, 129, 0.08) !important;
+  background: var(--bg-soft) !important;
   font-weight: var(--font-weight-semibold);
   color: var(--text-strong) !important;
 }
 
 .el-table tr {
-  background: transparent !important;
+  background: var(--surface) !important;
 }
 
-.el-table tr:hover > td {
-  background: rgba(16, 185, 129, 0.05) !important;
+.el-table tr:hover>td {
+  background: var(--surface-hover) !important;
 }
 
 /* ====================================
@@ -374,9 +384,12 @@ html, body {
 
 /* 卡片悬浮效果 */
 @keyframes card-float {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translateY(0px);
   }
+
   50% {
     transform: translateY(-4px);
   }
@@ -386,25 +399,14 @@ html, body {
   animation: card-float 2s ease-in-out infinite;
 }
 
-/* 脉冲发光 */
-@keyframes pulse-glow {
-  0%, 100% {
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
-  }
-  50% {
-    box-shadow: 0 0 40px rgba(16, 185, 129, 0.8);
-  }
-}
-
-.pulse-glow {
-  animation: pulse-glow 2s ease-in-out infinite;
-}
-
 /* 渐变流动 */
 @keyframes gradient-shift {
-  0%, 100% {
+
+  0%,
+  100% {
     background-position: 0% 50%;
   }
+
   50% {
     background-position: 100% 50%;
   }
@@ -417,12 +419,15 @@ html, body {
 
 /* 呼吸效果 */
 @keyframes breathe {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
     transform: scale(1);
   }
+
   50% {
-    opacity: 0.8;
+    opacity: 0.9;
     transform: scale(1.02);
   }
 }
@@ -524,7 +529,7 @@ html, body {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .search-bar .el-input {
     width: 100%;
   }
@@ -591,11 +596,11 @@ html, body {
   .page-container {
     padding: 16px;
   }
-  
+
   .page-title {
     font-size: 24px;
   }
-  
+
   .stats-card .stats-number {
     font-size: 28px;
   }

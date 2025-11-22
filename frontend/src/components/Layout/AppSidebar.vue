@@ -246,28 +246,12 @@ const onMouseLeave = () => {
 
 <style scoped>
 .app-sidebar {
-  background: linear-gradient(180deg, #0a1612 0%, #0f1f1a 100%);
+  background: #ffffff;
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
   position: relative;
-  border-right: 1px solid rgba(16, 185, 129, 0.1);
-}
-
-/* 跟随鼠标的微光高亮 */
-.app-sidebar::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background:
-    radial-gradient(600px circle at var(--sb-x, -100px) var(--sb-y, -100px), rgba(16, 185, 129, 0.08), transparent 60%);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.app-sidebar:hover::before {
-  opacity: 1;
+  border-right: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
 }
 
 /* 顶部渐变装饰 */
@@ -342,9 +326,9 @@ const onMouseLeave = () => {
 }
 
 :deep(.el-menu-item:hover) {
-  background: rgba(16, 185, 129, 0.1) !important;
+  background: var(--surface-hover) !important;
   border-color: rgba(16, 185, 129, 0.2) !important;
-  color: var(--color-accent-mint);
+  color: var(--color-primary);
   transform: translateX(4px);
 }
 
@@ -352,16 +336,14 @@ const onMouseLeave = () => {
 :deep(.el-menu-item.is-active) {
   background: linear-gradient(
     135deg,
-    rgba(16, 185, 129, 0.15) 0%,
-    rgba(16, 185, 129, 0.08) 100%
+    rgba(16, 185, 129, 0.1) 0%,
+    rgba(16, 185, 129, 0.05) 100%
   ) !important;
   border-color: rgba(16, 185, 129, 0.3) !important;
-  color: var(--color-accent-mint);
+  color: var(--color-primary);
   font-weight: 600;
   transform: translateX(4px);
-  box-shadow: 
-    inset 0 1px 2px rgba(16, 185, 129, 0.2),
-    0 0 20px rgba(16, 185, 129, 0.1);
+  box-shadow: inset 0 1px 2px rgba(16, 185, 129, 0.1);
 }
 
 /* 活跃项左侧渐变指示条 */
