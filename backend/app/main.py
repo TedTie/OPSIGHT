@@ -514,14 +514,19 @@ async def update_current_user_info(
         try:
             import httpx
             supabase_url = os.getenv("VITE_SUPABASE_URL") or os.getenv("SUPABASE_URL")
-            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SERVICE_ROLE_KEY")
+            # Use Anon Key as requested by user
+            supabase_key = os.getenv("VITE_SUPABASE_ANON_KEY") or os.getenv("SUPABASE_ANON_KEY")
             
             if supabase_url and supabase_key:
                 async with httpx.AsyncClient() as client:
-                    # Update user_account table using Supabase REST API
-                    response = await client.patch(
-                        f"{supabase_url}/rest/v1/user_account?id=eq.{current_user.auth_uid}",
-                        json={"avatar_url": current_user.avatar_url},
+                    # Update user_account table using Supabase RPC (Remote Procedure Call)
+                    # This allows us to use the Anon Key securely via a defined function
+                    response = await client.post(
+                        f"{supabase_url}/rest/v1/rpc/update_avatar_url",
+                        json={
+                            "target_auth_uid": current_user.auth_uid,
+                            "new_avatar_url": current_user.avatar_url
+                        },
                         headers={
                             "apikey": supabase_key,
                             "Authorization": f"Bearer {supabase_key}",
@@ -532,7 +537,7 @@ async def update_current_user_info(
                     if response.status_code not in [200, 204]:
                         logging.warning(f"Failed to sync avatar_url to Supabase: {response.text}")
             else:
-                logging.warning("Supabase credentials not configured, skipping avatar sync")
+                logging.warning("Supabase credentials (URL/Anon Key) not configured, skipping avatar sync")
         except Exception as e:
             logging.error(f"Error syncing avatar_url to Supabase: {str(e)}")
             # Don't fail the whole request if Supabase sync fails
