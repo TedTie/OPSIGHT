@@ -581,173 +581,276 @@ onMounted(async () => {
 
 <style scoped>
 .dashboard {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
+  padding: 24px;
 }
 
 .welcome-section {
-  margin-bottom: 24px;
+  margin-bottom: 32px;
+  padding: 24px;
+  border-radius: var(--radius-xl);
+  background: linear-gradient(
+    135deg,
+    rgba(16, 185, 129, 0.05) 0%,
+    rgba(110, 231, 183, 0.03) 100%
+  );
+  border: 1px solid rgba(16, 185, 129, 0.1);
 }
 
 .welcome-section h1 {
-  font-size: 28px;
-  color: #2c3e50;
+  font-size: 32px;
+  font-weight: 700;
   margin: 0 0 8px 0;
+  background: var(--gradient-emerald);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.5px;
 }
 
 .welcome-section p {
-  color: #7f8c8d;
+  color: var(--text-muted);
   font-size: 16px;
   margin: 0;
+  font-weight: 500;
 }
 
 .stats-row {
-  margin-bottom: 24px;
+  margin-bottom: 32px;
 }
 
 .stats-card {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.stats-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--gradient-primary);
+  transform: scaleX(0);
+  transition: transform 0.3s ease;
+}
+
+.stats-card:hover::before {
+  transform: scaleX(1);
+}
+
+.stats-card:hover {
+  transform: translateY(-6px);
 }
 
 .stats-content {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 20px;
+  padding: 8px 0;
 }
 
 .stats-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 8px;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 28px;
   color: white;
+  position: relative;
+  box-shadow: var(--shadow-glow-soft);
+  transition: all 0.3s ease;
+}
+
+.stats-card:hover .stats-icon {
+  transform: scale(1.1) rotate(5deg);
+  box-shadow: var(--shadow-glow);
 }
 
 .stats-icon.pending {
-  background: #e6a23c;
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
 }
 
 .stats-icon.progress {
-  background: #409eff;
+  background: var(--gradient-cyber-green);
 }
 
 .stats-icon.completed {
-  background: #67c23a;
+  background: var(--gradient-emerald);
 }
 
 .stats-icon.reports {
-  background: #909399;
+  background: var(--gradient-nature);
+}
+
+.stats-info {
+  flex: 1;
 }
 
 .stats-info h3 {
-  font-size: 24px;
-  font-weight: bold;
-  color: #2c3e50;
+  font-size: 32px;
+  font-weight: 700;
   margin: 0 0 4px 0;
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1;
 }
 
 .stats-info p {
-  color: #7f8c8d;
+  color: var(--text-muted);
   font-size: 14px;
   margin: 0;
+  font-weight: 500;
 }
 
 .content-row {
-  margin-bottom: 24px;
+  margin-bottom: 32px;
 }
 
 .content-card {
-  margin-bottom: 16px;
-  height: 400px;
+  margin-bottom: 20px;
+  height: 450px;
+  display: flex;
+  flex-direction: column;
+}
+
+.content-card :deep(.el-card__body) {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .charts-row {
-  margin-bottom: 24px;
+  margin-bottom: 32px;
 }
 
 .charts-row .content-card {
-  height: 380px;
+  height: 420px;
 }
 
 .efficiency-row {
-  margin-bottom: 24px;
+  margin-bottom: 32px;
 }
 
 .efficiency-item {
   text-align: center;
-  padding: 20px;
-  border-radius: 8px;
-  background: var(--brand-gradient);
+  padding: 28px 20px;
+  border-radius: var(--radius-lg);
+  background: var(--gradient-primary);
   color: white;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-glow-soft);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.efficiency-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    transparent 50%
+  );
+  pointer-events: none;
+}
+
+.efficiency-item:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: var(--shadow-glow);
 }
 
 .efficiency-item h4 {
-  font-size: 16px;
+  font-size: 15px;
   margin: 0 0 12px 0;
   opacity: 0.9;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .efficiency-value {
-  font-size: 32px;
-  font-weight: bold;
-  margin: 12px 0;
+  font-size: 40px;
+  font-weight: 700;
+  margin: 16px 0;
+  line-height: 1;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
 }
 
 .efficiency-desc {
-  font-size: 14px;
+  font-size: 13px;
   margin: 0;
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  font-weight: 600;
+  color: var(--text-strong);
 }
 
 .task-list,
 .report-list {
-  height: 320px;
+  height: 360px;
   overflow-y: auto;
+  padding-right: 4px;
 }
 
 .task-item,
 .report-item {
-  padding: 12px;
-  border-bottom: 1px solid #ebeef5;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  margin-bottom: 8px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  background: rgba(16, 185, 129, 0.03);
 }
 
 .task-item:hover,
 .report-item:hover {
-  background-color: #f5f7fa;
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.2);
+  transform: translateX(4px);
+  box-shadow: var(--shadow-sm);
 }
 
 .task-item:last-child,
 .report-item:last-child {
-  border-bottom: none;
+  margin-bottom: 0;
 }
 
 .task-info h4,
 .report-info h4 {
   font-size: 16px;
-  color: #2c3e50;
+  font-weight: 600;
+  color: var(--text-strong);
   margin: 0 0 8px 0;
 }
 
 .task-info p,
 .report-info p {
-  color: #7f8c8d;
+  color: var(--text-muted);
   font-size: 14px;
   margin: 0 0 8px 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .task-meta,
@@ -755,63 +858,135 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
 }
 
 .task-date,
 .report-date {
-  color: #909399;
+  color: var(--text-muted);
   font-size: 12px;
+  font-weight: 500;
+}
+
+:deep(.el-tag) {
+  border-radius: 6px;
+  font-weight: 500;
+  padding: 0 10px;
 }
 
 .empty-state {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 200px;
+  height: 280px;
+  color: var(--text-muted);
+}
+
+.empty-state :deep(.el-empty__description) {
+  color: var(--text-muted);
 }
 
 .quick-actions {
-  margin-bottom: 24px;
+  margin-bottom: 32px;
 }
 
 .action-buttons {
   display: flex;
   gap: 16px;
   flex-wrap: wrap;
+  justify-content: center;
+}
+
+.action-buttons .el-button {
+  padding: 12px 28px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.action-buttons .el-button:hover {
+  transform: translateY(-2px);
 }
 
 /* 响应式设计 */
 @media (max-width: 768px) {
+  .dashboard {
+    padding: 16px;
+  }
+  
+  .welcome-section {
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+  
   .welcome-section h1 {
-    font-size: 24px;
+    font-size: 26px;
+  }
+  
+  .welcome-section p {
+    font-size: 14px;
   }
   
   .stats-content {
-    gap: 12px;
+    gap: 16px;
   }
   
   .stats-icon {
-    width: 40px;
-    height: 40px;
-    font-size: 20px;
+    width: 48px;
+    height: 48px;
+    font-size: 24px;
   }
   
   .stats-info h3 {
-    font-size: 20px;
+    font-size: 26px;
+  }
+  
+  .stats-info p {
+    font-size: 13px;
   }
   
   .content-card {
     height: auto;
+    min-height: 350px;
+  }
+  
+  .charts-row .content-card {
+    height: auto;
+    min-height: 350px;
   }
   
   .task-list,
   .report-list {
     height: auto;
-    max-height: 300px;
+    max-height: 400px;
+  }
+  
+  .efficiency-item {
+    padding: 24px 16px;
+  }
+  
+  .efficiency-value {
+    font-size: 32px;
   }
   
   .action-buttons {
-    justify-content: center;
+    flex-direction: column;
+  }
+  
+  .action-buttons .el-button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-info h3 {
+    font-size: 24px;
+  }
+  
+  .efficiency-value {
+    font-size: 28px;
   }
 }
 </style>

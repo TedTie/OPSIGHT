@@ -226,13 +226,14 @@ watch(isAdmin, (newValue) => {
 
 <style scoped>
 .app-sidebar {
-  background: #0f172a; /* 保持原配色 */
-  transition: width 0.3s;
+  background: linear-gradient(180deg, #0a1612 0%, #0f1f1a 100%);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
   position: relative;
+  border-right: 1px solid rgba(16, 185, 129, 0.1);
 }
 
-/* 跟随鼠标的柔光高亮，不改变配色，仅轻度提亮 */
+/* 跟随鼠标的微光高亮 */
 .app-sidebar::before {
   content: '';
   position: absolute;
@@ -240,15 +241,30 @@ watch(isAdmin, (newValue) => {
   pointer-events: none;
   z-index: 0;
   background:
-    radial-gradient(500px circle at var(--sb-x, -100px) var(--sb-y, -100px), rgba(255,255,255,0.06), transparent 60%);
+    radial-gradient(600px circle at var(--sb-x, -100px) var(--sb-y, -100px), rgba(16, 185, 129, 0.08), transparent 60%);
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.3s ease;
 }
-.app-sidebar:hover::before { opacity: 1; }
 
-.sidebar-content { position: relative; z-index: 1; }
+.app-sidebar:hover::before {
+  opacity: 1;
+}
+
+/* 顶部渐变装饰 */
+.app-sidebar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--gradient-primary);
+  z-index: 1;
+}
 
 .sidebar-content {
+  position: relative;
+  z-index: 1;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -258,101 +274,128 @@ watch(isAdmin, (newValue) => {
   flex: 1;
   border: none;
   background: transparent;
+  padding: 12px 8px;
 }
 
-/* 入场动画（轻微滑入与淡入） */
-@keyframes sbItemIn {
-  0% { opacity: 0; transform: translateX(-8px) scale(0.98); }
-  100% { opacity: 1; transform: translateX(0) scale(1); }
+/* 菜单项入场动画 */
+@keyframes menuItemSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 :deep(.el-menu-item),
 :deep(.el-sub-menu__title) {
   position: relative;
-  transition: transform 0.18s ease, background-color 0.18s ease, color 0.18s ease;
-  animation: sbItemIn 0.5s ease both;
+  margin: 4px 0;
+  border-radius: var(--radius-md);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: menuItemSlideIn 0.4s ease both;
+  color: var(--text-normal);
+  font-weight: 500;
 }
 
-/* 轻度级联延迟（前十项） */
+/* 级联延迟动画 */
 :deep(.sidebar-menu > .el-menu-item:nth-child(1)),
-:deep(.sidebar-menu > .el-sub-menu:nth-child(1) > .el-sub-menu__title) { animation-delay: 30ms; }
+:deep(.sidebar-menu > .el-sub-menu:nth-child(1)) { animation-delay: 30ms; }
 :deep(.sidebar-menu > .el-menu-item:nth-child(2)),
-:deep(.sidebar-menu > .el-sub-menu:nth-child(2) > .el-sub-menu__title) { animation-delay: 60ms; }
+:deep(.sidebar-menu > .el-sub-menu:nth-child(2)) { animation-delay: 60ms; }
 :deep(.sidebar-menu > .el-menu-item:nth-child(3)),
-:deep(.sidebar-menu > .el-sub-menu:nth-child(3) > .el-sub-menu__title) { animation-delay: 90ms; }
+:deep(.sidebar-menu > .el-sub-menu:nth-child(3)) { animation-delay: 90ms; }
 :deep(.sidebar-menu > .el-menu-item:nth-child(4)),
-:deep(.sidebar-menu > .el-sub-menu:nth-child(4) > .el-sub-menu__title) { animation-delay: 120ms; }
+:deep(.sidebar-menu > .el-sub-menu:nth-child(4)) { animation-delay: 120ms; }
 :deep(.sidebar-menu > .el-menu-item:nth-child(5)),
-:deep(.sidebar-menu > .el-sub-menu:nth-child(5) > .el-sub-menu__title) { animation-delay: 150ms; }
+:deep(.sidebar-menu > .el-sub-menu:nth-child(5)) { animation-delay: 150ms; }
 :deep(.sidebar-menu > .el-menu-item:nth-child(6)),
-:deep(.sidebar-menu > .el-sub-menu:nth-child(6) > .el-sub-menu__title) { animation-delay: 180ms; }
+:deep(.sidebar-menu > .el-sub-menu:nth-child(6)) { animation-delay: 180ms; }
 :deep(.sidebar-menu > .el-menu-item:nth-child(7)),
-:deep(.sidebar-menu > .el-sub-menu:nth-child(7) > .el-sub-menu__title) { animation-delay: 210ms; }
-:deep(.sidebar-menu > .el-menu-item:nth-child(8)),
-:deep(.sidebar-menu > .el-sub-menu:nth-child(8) > .el-sub-menu__title) { animation-delay: 240ms; }
-:deep(.sidebar-menu > .el-menu-item:nth-child(9)),
-:deep(.sidebar-menu > .el-sub-menu:nth-child(9) > .el-sub-menu__title) { animation-delay: 270ms; }
-:deep(.sidebar-menu > .el-menu-item:nth-child(10)),
-:deep(.sidebar-menu > .el-sub-menu:nth-child(10) > .el-sub-menu__title) { animation-delay: 300ms; }
+:deep(.sidebar-menu > .el-sub-menu:nth-child(7)) { animation-delay: 210ms; }
 
 :deep(.el-menu-item) {
-  color: #bfcbd9;
   background: transparent !important;
-  border: none !important;
+  border: 1px solid transparent !important;
 }
 
 :deep(.el-menu-item:hover) {
-  background: rgba(255, 255, 255, 0.1) !important;
-  color: #fff;
-  transform: translateX(2px);
+  background: rgba(16, 185, 129, 0.1) !important;
+  border-color: rgba(16, 185, 129, 0.2) !important;
+  color: var(--color-accent-mint);
+  transform: translateX(4px);
 }
 
+/* 活跃菜单项 */
 :deep(.el-menu-item.is-active) {
-  background: var(--el-color-primary) !important;
-  color: #fff;
-  transform: translateX(2px);
+  background: linear-gradient(
+    135deg,
+    rgba(16, 185, 129, 0.15) 0%,
+    rgba(16, 185, 129, 0.08) 100%
+  ) !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+  color: var(--color-accent-mint);
+  font-weight: 600;
+  transform: translateX(4px);
+  box-shadow: 
+    inset 0 1px 2px rgba(16, 185, 129, 0.2),
+    0 0 20px rgba(16, 185, 129, 0.1);
 }
 
-/* 活跃项左侧指示条 */
+/* 活跃项左侧渐变指示条 */
 :deep(.el-menu-item.is-active)::before {
   content: '';
   position: absolute;
   left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 3px;
-  background: #ffffff; /* 保持在主色背景上清晰，颜色整体不改 */
-  border-radius: 2px;
-  opacity: 0.8;
+  top: 6px;
+  bottom: 6px;
+  width: 4px;
+  background: var(--gradient-primary);
+  border-radius: 0 4px 4px 0;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+}
+
+/* 活跃项图标发光 */
+:deep(.el-menu-item.is-active .el-icon) {
+  filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.6));
 }
 
 :deep(.el-sub-menu__title) {
-  color: #bfcbd9;
+  color: var(--text-normal);
   background: transparent !important;
-  border: none !important;
+  border: 1px solid transparent !important;
 }
 
 :deep(.el-sub-menu__title:hover) {
-  background: rgba(255, 255, 255, 0.1) !important;
-  color: #fff;
-  transform: translateX(2px);
+  background: rgba(16, 185, 129, 0.1) !important;
+  border-color: rgba(16, 185, 129, 0.15) !important;
+  color: var(--color-accent-mint);
+  transform: translateX(4px);
 }
 
 :deep(.el-sub-menu .el-menu-item) {
-  background: rgba(0, 0, 0, 0.1) !important;
-  min-height: 40px;
+  background: rgba(0, 0, 0, 0.15) !important;
+  min-height: 42px;
+  margin: 2px 0;
 }
 
 :deep(.el-sub-menu .el-menu-item:hover) {
-  background: rgba(255, 255, 255, 0.1) !important;
-  transform: translateX(2px);
+  background: rgba(16, 185, 129, 0.12) !important;
+  transform: translateX(4px);
 }
 
 :deep(.el-sub-menu .el-menu-item.is-active) {
-  background: var(--el-color-primary) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(16, 185, 129, 0.2) 0%,
+    rgba(16, 185, 129, 0.12) 100%
+  ) !important;
+  color: var(--color-accent-mint);
 }
 
-/* 折叠状态样式 */
+/* 折叠状态 */
 :deep(.el-menu--collapse) {
   width: 64px;
 }
@@ -360,6 +403,7 @@ watch(isAdmin, (newValue) => {
 :deep(.el-menu--collapse .el-menu-item) {
   text-align: center;
   padding: 0 20px;
+  justify-content: center;
 }
 
 :deep(.el-menu--collapse .el-sub-menu) {
@@ -368,22 +412,33 @@ watch(isAdmin, (newValue) => {
 
 :deep(.el-menu--collapse .el-sub-menu__title) {
   padding: 0 20px;
+  justify-content: center;
 }
 
 /* 图标样式 */
 :deep(.el-icon) {
-  width: 20px;
-  height: 20px;
-  margin-right: 8px;
+  width: 22px;
+  height: 22px;
+  margin-right: 10px;
+  transition: all 0.3s ease;
 }
 
 :deep(.el-menu--collapse .el-icon) {
   margin-right: 0;
 }
+
+:deep(.el-menu-item:hover .el-icon),
+:deep(.el-sub-menu__title:hover .el-icon) {
+  transform: scale(1.1);
+  filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.4));
+}
 </style>
-// Sidebar spotlight 跟随鼠标的高亮效果（纯视觉）
+
+<script setup>
+// Sidebar spotlight 跟随鼠标的高亮效果
 const asideRef = ref(null)
 const spotlightStyle = ref({})
+
 const onMouseMove = (e) => {
   try {
     const el = asideRef.value?.$el || asideRef.value || e.currentTarget
@@ -392,7 +447,11 @@ const onMouseMove = (e) => {
     const y = e.clientY - rect.top
     spotlightStyle.value = { '--sb-x': `${x}px`, '--sb-y': `${y}px` }
   } catch (_) {
-    // 静默失败，避免影响功能
+    // 静默失败
   }
 }
-const onMouseLeave = () => { spotlightStyle.value = {} }
+
+const onMouseLeave = () => {
+  spotlightStyle.value = {}
+}
+</script>
