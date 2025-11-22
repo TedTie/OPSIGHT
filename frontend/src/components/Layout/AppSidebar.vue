@@ -22,37 +22,37 @@
         <!-- Dashboard -->
         <el-menu-item index="/dashboard">
           <el-icon><i-tabler-layout-dashboard /></el-icon>
-          <template #title>仪表板</template>
+          <span>仪表板</span>
         </el-menu-item>
         
         <!-- Tasks -->
         <el-menu-item index="/tasks">
           <el-icon><i-tabler-checklist /></el-icon>
-          <template #title>任务管理</template>
+          <span>任务管理</span>
         </el-menu-item>
         
         <!-- Reports -->
         <el-menu-item index="/reports">
           <el-icon><i-tabler-file-text /></el-icon>
-          <template #title>日报管理</template>
+          <span>日报管理</span>
         </el-menu-item>
         
         <!-- Analytics -->
         <el-menu-item index="/analytics">
           <el-icon><i-tabler-chart-line /></el-icon>
-          <template #title>数据分析</template>
+          <span>数据分析</span>
         </el-menu-item>
         
         <!-- Knowledge Base -->
         <el-menu-item v-if="isAdmin" index="/knowledge-base">
           <el-icon><i-tabler-book-2 /></el-icon>
-          <template #title>知识库</template>
+          <span>知识库</span>
         </el-menu-item>
         
         <!-- Settings -->
         <el-menu-item v-if="isSuperAdmin" index="/settings">
           <el-icon><i-tabler-settings /></el-icon>
-          <template #title>设置</template>
+          <span>设置</span>
         </el-menu-item>
         
         <!-- Admin -->
