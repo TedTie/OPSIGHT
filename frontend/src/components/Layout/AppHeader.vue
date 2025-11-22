@@ -7,6 +7,11 @@
         class="menu-toggle"
         @click="toggleSidebar"
       />
+        <el-button
+          type="text"
+          :icon="isDark ? Sun : Moon"
+          class="theme-toggle"
+          @click="toggleTheme" />
       <h1 class="app-title"><TextFlip text="OPSIGHT" /></h1>
     </div>
     
@@ -126,6 +131,8 @@ import User from '~icons/tabler/user'
 import Setting from '~icons/tabler/settings'
 import SwitchButton from '~icons/tabler/logout'
 import ArrowDown from '~icons/tabler/chevron-down'
+import Moon from '~icons/tabler/moon'
+import Sun from '~icons/tabler/sun'
 import { useAuthStore } from '@/stores/auth'
 import TextFlip from '@/components/Effects/TextFlip.vue'
 import api from '@/utils/api'
@@ -197,8 +204,30 @@ const userInitials = computed(() => {
 
 // 切换侧边栏
 const toggleSidebar = () => {
-  emit('toggle-sidebar')
+  sidebarCollapsed.value = !sidebarCollapsed.value
 }
+
+const isDark = ref(localStorage.getItem('theme') === 'dark')
+
+const applyTheme = (dark) => {
+  const el = document.documentElement
+  if (dark) {
+    el.classList.add('dark-mode')
+    el.style.setProperty('color-scheme', 'dark')
+  } else {
+    el.classList.remove('dark-mode')
+    el.style.setProperty('color-scheme', 'light')
+  }
+  localStorage.setItem('theme', dark ? 'dark' : 'light')
+}
+
+const toggleTheme = () => {
+  isDark.value = !isDark.value
+  applyTheme(isDark.value)
+}
+
+// Initialize theme on load
+applyTheme(isDark.value)
 
 // 处理用户菜单命令
 const handleUserCommand = async (command) => {
@@ -451,14 +480,19 @@ onUnmounted(() => {
   padding: 0 24px;
   height: 60px;
   
-  /* 白色背景 */
-  background: #ffffff;
+  /* 背景使用变量 */
+  background: var(--bg-elevated);
   border-bottom: 1px solid var(--border-color);
   box-shadow: var(--shadow-sm);
   
   position: sticky;
   top: 0;
   z-index: 100;
+}
+
+/* Dark mode overrides */
+.dark-mode .app-header {
+  background: var(--bg-page);
 }
 
 .header-left {

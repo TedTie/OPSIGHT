@@ -106,6 +106,40 @@
   --el-bg-color-page: var(--bg-page);
 }
 
+/* Dark mode variables */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-page: #1a1a1a;
+    --bg-elevated: #2a2a2a;
+    --bg-soft: #2f2f2f;
+    --surface: #2a2a2a;
+    --surface-hover: #333333;
+    --text-strong: #f5f5f5;
+    --text-normal: #d1d5db;
+    --text-muted: #9ca3af;
+    --border-color: #3f3f46;
+    --border-color-hover: #52525b;
+    /* Keep primary colors */
+    --color-primary: #10b981;
+    --color-primary-light: #34d399;
+    --color-primary-dark: #059669;
+  }
+}
+
+/* Font size variables */
+:root {
+  --font-size-base: 18px;
+  --font-size-h1: 32px;
+  --font-size-h2: 28px;
+  --font-size-h3: 24px;
+  --font-size-h4: 20px;
+}
+
+html,
+body {
+  font-size: var(--font-size-base);
+}
+
 /* ====================================
    全局基础样式
    ==================================== */
@@ -448,6 +482,28 @@ body {
 
 .page-header {
   margin-bottom: 24px;
+}
+
+.menu-toggle {
+  font-size: 20px;
+  color: var(--text-muted);
+  transition: all 0.3s ease;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+}
+
+.theme-toggle {
+  font-size: 20px;
+  color: var(--text-muted);
+  transition: all 0.3s ease;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+}
+
+.theme-toggle:hover {
+  color: var(--color-primary);
+  background: rgba(16, 185, 129, 0.1);
+  transform: scale(1.1);
 }
 
 .page-title {

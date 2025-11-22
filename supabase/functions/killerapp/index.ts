@@ -181,6 +181,7 @@ serve(async (req: Request): Promise<Response> => {
     }
   }
 
+
   if (afterFn.startsWith("api/v1/analytics/summary") && req.method === "GET") {
     const idType = (u.searchParams.get("identity_type") || "").toUpperCase()
     const group_id = u.searchParams.get("group_id") || ""
@@ -190,36 +191,44 @@ serve(async (req: Request): Promise<Response> => {
     const start = month && year ? new Date(Date.UTC(year, month - 1, 1)).toISOString().slice(0, 10) : ""
     const end = month && year ? new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10) : ""
 
-    const { data: users } = await supabase.from("user_account").select("id,identity_type,group_id")
-    let candid = (users || [])
-    if (idType) candid = candid.filter(x => String((x as any).identity_type || "").toUpperCase() === idType)
-    if (group_id) candid = candid.filter(x => String((x as any).group_id || "") === String(group_id))
-    if (user_id) candid = candid.filter(x => String((x as any).id || "") === String(user_id))
-    const set = new Set(candid.map(x => String((x as any).id)))
+    // Build user filter query at database level
+    let uq = supabase.from("user_account").select("id")
+    if (idType) uq = uq.eq("identity_type", idType)
+    if (group_id) uq = uq.eq("group_id", group_id)
+    if (user_id) uq = uq.eq("id", user_id)
 
+    // Build reports query
     let rq = supabase.from("daily_reports").select("work_date,created_by,new_sign_amount,new_sign_count,referral_amount,referral_count,renewal_amount,upgrade_amount,renewal_count,upgrade_count")
     if (start) rq = rq.gte("work_date", start)
     if (end) rq = rq.lte("work_date", end)
-    const { data } = await rq
-    const rows = (data || []).filter(it => set.has(String((it as any).created_by || "")))
-    const sum = (arr: any[], key: string) => arr.reduce((acc, cur) => acc + Number((cur as any)[key] || 0), 0)
-    const monthObj = {
-      new_sign_amount: sum(rows as any[], "new_sign_amount"),
-      new_sign_count: sum(rows as any[], "new_sign_count"),
-      referral_amount: sum(rows as any[], "referral_amount"),
-      referral_count: sum(rows as any[], "referral_count"),
-      renewal_amount: sum(rows as any[], "renewal_amount"),
-      upgrade_amount: sum(rows as any[], "upgrade_amount"),
-      renewal_count: sum(rows as any[], "renewal_count"),
-      upgrade_count: sum(rows as any[], "upgrade_count")
-    }
-    // Ensure we select all necessary columns for goals
+
+    // Build goals query
     let gq = supabase.from("monthly_goals").select("amount_target,new_sign_target_amount,referral_target_amount,renewal_total_target_amount,upgrade_target_count,renewal_target_count").eq("year", year).eq("month", month)
     if (idType) gq = gq.eq("identity_type", idType)
-    const { data: goalRows } = await gq
-    const goal = Array.isArray(goalRows) ? goalRows[0] || null : null
+
+    // Execute all queries in parallel for better performance
+    const [usersRes, reportsRes, goalsRes] = await Promise.all([uq, rq, gq])
+
+    const allowedUids = new Set((usersRes.data || []).map((x: any) => String(x.id)))
+    const rows = (reportsRes.data || []).filter((it: any) => allowedUids.has(String(it.created_by || "")))
+
+    const sum = (arr: any[], key: string) => arr.reduce((acc, cur) => acc + Number((cur as any)[key] || 0), 0)
+    const monthObj = {
+      new_sign_amount: sum(rows, "new_sign_amount"),
+      new_sign_count: sum(rows, "new_sign_count"),
+      referral_amount: sum(rows, "referral_amount"),
+      referral_count: sum(rows, "referral_count"),
+      renewal_amount: sum(rows, "renewal_amount"),
+      upgrade_amount: sum(rows, "upgrade_amount"),
+      renewal_count: sum(rows, "renewal_count"),
+      upgrade_count: sum(rows, "upgrade_count")
+    }
+
+    const goal = Array.isArray(goalsRes.data) ? goalsRes.data[0] || null : null
     return json({ month: monthObj, goal })
   }
+
+
 
   if (afterFn.startsWith("api/v1/analytics/trend") && req.method === "GET") {
     const start = u.searchParams.get("start_date") || ""
@@ -228,17 +237,23 @@ serve(async (req: Request): Promise<Response> => {
     const uid = u.searchParams.get("user_id") || ""
     const idType = (u.searchParams.get("identity_type") || "").toUpperCase()
     const metrics = (u.searchParams.getAll("metrics") || []) as string[]
+
+    // Build queries
+    let uq = supabase.from("user_account").select("id")
+    if (idType) uq = uq.eq("identity_type", idType)
+    if (gid) uq = uq.eq("group_id", gid)
+    if (uid) uq = uq.eq("id", uid)
+
     let rq = supabase.from("daily_reports").select("work_date,created_by,new_sign_amount,new_sign_count,referral_amount,referral_count,renewal_amount,upgrade_amount,renewal_count,upgrade_count")
     if (start) rq = rq.gte("work_date", start)
     if (end) rq = rq.lte("work_date", end)
-    const { data: users } = await supabase.from("user_account").select("id,identity_type,group_id")
-    let candid = (users || [])
-    if (idType) candid = candid.filter(x => String((x as any).identity_type || "").toUpperCase() === idType)
-    if (gid) candid = candid.filter(x => String((x as any).group_id || "") === String(gid))
-    if (uid) candid = candid.filter(x => String((x as any).id || "") === String(uid))
-    const set = new Set(candid.map(x => String((x as any).id)))
-    const { data } = await rq
-    const rows = (data || []).filter(it => set.has(String((it as any).created_by || "")))
+
+    // Execute in parallel
+    const [usersRes, reportsRes] = await Promise.all([uq, rq])
+
+    const allowedUids = new Set((usersRes.data || []).map((x: any) => String(x.id)))
+    const rows = (reportsRes.data || []).filter((it: any) => allowedUids.has(String(it.created_by || "")))
+
     const bucket: Record<string, any> = {}
     const want = new Set(metrics)
     const keys = ["new_sign_amount", "new_sign_count", "referral_amount", "referral_count", "renewal_amount", "upgrade_amount", "renewal_count", "upgrade_count"]
@@ -250,8 +265,8 @@ serve(async (req: Request): Promise<Response> => {
         if (!want.size || want.has(k)) kv[k] = Number(kv[k] || 0) + Number((r as any)[k] || 0)
       }
     }
-    const series = Object.values(bucket).sort((a: any, b: any) => String(a.date) < String(b.date) ? -1 : 1)
-    return json({ series })
+    const res = Object.values(bucket).sort((a: any, b: any) => String(a.date).localeCompare(String(b.date)))
+    return json(res)
   }
 
   if (afterFn.startsWith("api/v1/analytics/data") && req.method === "GET") {
@@ -636,75 +651,152 @@ serve(async (req: Request): Promise<Response> => {
     const gid = u.searchParams.get("group_id") || ""
     const uid = u.searchParams.get("user_id") || ""
     const idType = (u.searchParams.get("identity_type") || "").toUpperCase()
-    const extended = "id,work_date,title,content,work_hours,task_progress,work_summary,efficiency_score,call_count,call_duration,achievements,challenges,tomorrow_plan,ai_analysis,actual_amount,new_sign_amount,referral_amount,referral_count,renewal_amount,upgrade_amount,renewal_count,upgrade_count,created_at,updated_at,created_by"
-    const base = "id,work_date,title,content,work_hours,task_progress,work_summary,efficiency_score,call_count,call_duration,achievements,challenges,tomorrow_plan,ai_analysis,created_at,updated_at,created_by"
-    let rq = supabase.from("daily_reports").select(extended)
+
+    // Build the query with user join for better performance
+    // This eliminates the N+1 query problem
+    const selectFields = `
+      id,
+      work_date,
+      title,
+      content,
+      work_hours,
+      task_progress,
+      work_summary,
+      efficiency_score,
+      call_count,
+      call_duration,
+      achievements,
+      challenges,
+      tomorrow_plan,
+      ai_analysis,
+      created_at,
+      updated_at,
+      created_by,
+      submitter:user_account!daily_reports_created_by_fkey(id,username,avatar_url)
+    `
+
+    // Try with extended fields first
+    const extendedFields = `
+      id,
+      work_date,
+      title,
+      content,
+      work_hours,
+      task_progress,
+      work_summary,
+      efficiency_score,
+      call_count,
+      call_duration,
+      achievements,
+      challenges,
+      tomorrow_plan,
+      ai_analysis,
+      actual_amount,
+      new_sign_amount,
+      referral_amount,
+      referral_count,
+      renewal_amount,
+      upgrade_amount,
+      renewal_count,
+      upgrade_count,
+      created_at,
+      updated_at,
+      created_by,
+      submitter:user_account!daily_reports_created_by_fkey(id,username,avatar_url)
+    `
+
+    let rq = supabase.from("daily_reports").select(extendedFields, { count: "exact" })
+
+    // Apply date filters
     if (start) rq = rq.gte("work_date", start)
     if (end) rq = rq.lte("work_date", end)
-    if (uid) {
-      try { (rq as any).or && (rq = (rq as any).or(`created_by.eq.${uid},created_by.is.null`)) } catch { }
-      if (!(rq as any).or) rq = rq.eq("created_by", uid)
-    }
-    let { data, error } = await rq
-    if (error) {
-      let rq2 = supabase.from("daily_reports").select(base)
-      if (start) rq2 = rq2.gte("work_date", start)
-      if (end) rq2 = rq2.lte("work_date", end)
-      if (uid) rq2 = rq2.eq("created_by", uid)
-      const r2 = await rq2
-      if (r2.error) return json({ detail: r2.error.message }, 500)
-      data = r2.data
-    }
-    let items = data || []
 
-    // Filter by Group or Identity
+    // Apply user filter
+    if (uid) {
+      rq = rq.eq("created_by", uid)
+    }
+
+    // Apply group or identity filter via user join
     if (gid || idType) {
-      let uq = supabase.from("user_account").select("id,group_id,identity_type")
+      // Get allowed user IDs first
+      let uq = supabase.from("user_account").select("id")
       if (gid) uq = uq.eq("group_id", gid)
       if (idType) uq = uq.eq("identity_type", idType)
       const { data: users } = await uq
-      const allowedUids = new Set((users || []).map(u => String((u as any).id)))
-      items = items.filter(it => allowedUids.has(String((it as any).created_by || "")))
+      const allowedUids = (users || []).map(u => String((u as any).id))
+
+      if (allowedUids.length > 0) {
+        rq = rq.in("created_by", allowedUids)
+      } else {
+        // No users match the filter, return empty result
+        return json({ items: [], total: 0, page, size })
+      }
     }
 
-    const total = items.length
+    // Apply pagination at database level (much faster!)
     const startIdx = (page - 1) * size
-    const sliced = items.slice(startIdx, startIdx + size)
+    rq = rq.order("work_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .range(startIdx, startIdx + size - 1)
 
-    // Enrich with submitter info
-    if (sliced.length > 0) {
-      const uids = new Set(sliced.map(it => String((it as any).created_by)).filter(Boolean))
-      console.log(`[Reports] Enriching ${sliced.length} reports, found ${uids.size} unique created_by values:`, Array.from(uids))
+    let { data, error, count } = await rq
 
+    // Fallback to basic fields if extended fields fail
+    if (error) {
+      console.log("[Reports] Extended fields query failed, falling back to basic fields:", error.message)
+
+      rq = supabase.from("daily_reports").select(selectFields, { count: "exact" })
+      if (start) rq = rq.gte("work_date", start)
+      if (end) rq = rq.lte("work_date", end)
+      if (uid) rq = rq.eq("created_by", uid)
+
+      if (gid || idType) {
+        let uq = supabase.from("user_account").select("id")
+        if (gid) uq = uq.eq("group_id", gid)
+        if (idType) uq = uq.eq("identity_type", idType)
+        const { data: users } = await uq
+        const allowedUids = (users || []).map(u => String((u as any).id))
+
+        if (allowedUids.length > 0) {
+          rq = rq.in("created_by", allowedUids)
+        } else {
+          return json({ items: [], total: 0, page, size })
+        }
+      }
+
+      rq = rq.order("work_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .range(startIdx, startIdx + size - 1)
+
+      const r2 = await rq
+      if (r2.error) return json({ detail: r2.error.message }, 500)
+      data = r2.data
+      count = r2.count
+    }
+
+    const items = data || []
+
+    // If foreign key join failed, fallback to batch loading
+    const needsEnrichment = items.some(it => !(it as any).submitter)
+    if (needsEnrichment && items.length > 0) {
+      console.log("[Reports] Foreign key join not available, using batch loading fallback")
+
+      const uids = new Set(items.map(it => String((it as any).created_by)).filter(Boolean))
       if (uids.size > 0) {
-        // Query users - simple approach: get all users that match by id
-        const uidArray = Array.from(uids)
-        console.log(`[Reports] Querying users for IDs:`, uidArray)
-
-        const { data: users, error: userError } = await supabase
+        const { data: users } = await supabase
           .from("user_account")
           .select("id,legacy_id,username,avatar_url")
-          .in("id", uidArray)
-
-        console.log(`[Reports] User query result: ${users?.length || 0} users found`, userError ? `Error: ${userError.message}` : '')
-
-        if (userError) {
-          console.error(`[Reports] User query error:`, userError)
-        }
+          .in("id", Array.from(uids))
 
         const userMap = new Map<string, any>()
         for (const u of users || []) {
-          // Map by both UUID and legacy_id
           userMap.set(String((u as any).id), u)
           if ((u as any).legacy_id) {
             userMap.set(String((u as any).legacy_id), u)
           }
-          console.log(`[Reports] Mapped user: id=${(u as any).id}, legacy_id=${(u as any).legacy_id}, username=${(u as any).username}`)
         }
 
-        console.log(`[Reports] Total users in map: ${userMap.size}`)
-
-        sliced.forEach(it => {
+        items.forEach(it => {
           const createdBy = String((it as any).created_by)
           const u = userMap.get(createdBy)
           if (u) {
@@ -712,16 +804,14 @@ serve(async (req: Request): Promise<Response> => {
               username: (u as any).username,
               avatar_url: (u as any).avatar_url
             }
-            console.log(`[Reports] ✓ Enriched report ${(it as any).id} with submitter: ${(u as any).username}`)
-          } else {
-            console.log(`[Reports] ✗ No user found for created_by: ${createdBy}`)
           }
         })
       }
     }
 
-    return json({ items: sliced, total, page, size })
+    return json({ items, total: count || 0, page, size })
   }
+
 
   if (afterFn === "api/v1/reports" && req.method === "POST") {
     const raw = await parseBody(req) as Record<string, unknown>

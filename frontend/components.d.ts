@@ -11,6 +11,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AdminTeamPerformance: typeof import('./src/components/AdminTeamPerformance.vue')['default']
     AgentList: typeof import('./src/components/admin/AgentList.vue')['default']
     AIFloatingBall: typeof import('./src/components/AIFloatingBall.vue')['default']
     AppHeader: typeof import('./src/components/Layout/AppHeader.vue')['default']
