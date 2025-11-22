@@ -166,8 +166,49 @@ body {
 }
 
 .text-muted {
-  color: var(--text-muted);
+  color: var(--text-disabled);
 }
+
+/* ====================================
+   Global Icon Alignment Fixes
+   ==================================== */
+
+/* Fix Element Plus icon alignment globally */
+.el-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  vertical-align: middle !important;
+}
+
+/* Fix button icon alignment */
+.el-button .el-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  vertical-align: middle !important;
+}
+
+/* Fix input prefix/suffix icon alignment */
+.el-input__prefix .el-icon,
+.el-input__suffix .el-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* Fix table column icons */
+.el-table th .el-icon,
+.el-table td .el-icon {
+  vertical-align: middle !important;
+}
+
+/* Fix dropdown/select icons */
+.el-select .el-icon,
+.el-dropdown .el-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
 
 .text-primary {
   color: var(--color-primary);
