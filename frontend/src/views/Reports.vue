@@ -20,8 +20,8 @@
         </div>
       </template>
       
-      <div class="table-toolbar">
-        <div class="table-filters">
+      <div class="toolbar-container">
+        <div class="filter-group">
           <el-date-picker
             v-model="filters.dateRange"
             type="daterange"
@@ -30,6 +30,7 @@
             end-placeholder="结束日期"
             format="YYYY-MM-DD"
             value-format="YYYY-MM-DD"
+            class="filter-date"
           />
           
           <el-input
@@ -37,14 +38,16 @@
             placeholder="搜索日报..."
             :prefix-icon="Search"
             clearable
+            class="search-input"
           />
 
           <!-- 管理员：本组用户筛选 -->
           <el-select
-            v-if="isAdmin"
+            v-if="isAdmin && !isSuperAdmin"
             v-model="selectedUserId"
             placeholder="筛选本组用户"
             clearable
+            class="filter-select"
             @change="fetchReports"
           >
             <el-option
@@ -55,63 +58,66 @@
             />
           </el-select>
 
-          <!-- 超级管理员：身份/组别/用户筛选（层级顺序：Identity -> Group -> User） -->
-          <el-select
-            v-if="isSuperAdmin"
-            v-model="selectedRoleType"
-            placeholder="选择身份"
-            clearable
-            @change="onIdentityChange"
-          >
-            <el-option label="全部" :value="null" />
-            <el-option label="CC(顾问)" value="cc" />
-            <el-option label="SS(班主任)" value="ss" />
-            <el-option label="LP(英文辅导)" value="lp" />
-          </el-select>
+          <!-- 超级管理员：身份/组别/用户筛选 -->
+          <template v-if="isSuperAdmin">
+            <el-select
+              v-model="selectedRoleType"
+              placeholder="选择身份"
+              clearable
+              class="filter-select"
+              @change="onIdentityChange"
+            >
+              <el-option label="全部" :value="null" />
+              <el-option label="CC(顾问)" value="cc" />
+              <el-option label="SS(班主任)" value="ss" />
+              <el-option label="LP(英文辅导)" value="lp" />
+            </el-select>
 
-          <el-select
-            v-if="isSuperAdmin"
-            v-model="selectedGroupId"
-            placeholder="选择组别"
-            clearable
-            @change="onGroupChange"
-          >
-            <el-option label="全部" :value="null" />
-            <el-option
-              v-for="group in filteredGroupOptions"
-              :key="group.id"
-              :label="group.name"
-              :value="group.id"
-            />
-          </el-select>
+            <el-select
+              v-model="selectedGroupId"
+              placeholder="选择组别"
+              clearable
+              class="filter-select"
+              @change="onGroupChange"
+            >
+              <el-option label="全部" :value="null" />
+              <el-option
+                v-for="group in filteredGroupOptions"
+                :key="group.id"
+                :label="group.name"
+                :value="group.id"
+              />
+            </el-select>
 
-          <el-select
-            v-if="isSuperAdmin"
-            v-model="selectedUserId"
-            placeholder="选择用户"
-            clearable
-            @change="fetchReports"
-          >
-            <el-option label="全部" :value="null" />
-            <el-option
-              v-for="user in filteredUserOptions"
-              :key="user.id"
-              :label="user.username"
-              :value="user.id"
-            />
-          </el-select>
+            <el-select
+              v-model="selectedUserId"
+              placeholder="选择用户"
+              clearable
+              class="filter-select"
+              @change="fetchReports"
+            >
+              <el-option label="全部" :value="null" />
+              <el-option
+                v-for="user in filteredUserOptions"
+                :key="user.id"
+                :label="user.username"
+                :value="user.id"
+              />
+            </el-select>
+          </template>
         </div>
         
-        <div class="table-actions">
-          <el-button :icon="Refresh" @click="fetchReports">刷新</el-button>
+        <div class="action-group">
           <el-button 
             v-can="'reports:auto_generate'"
             type="info" 
+            plain
             @click="autoGenerateReport"
             :loading="autoGenerating"
           >
             自动生成今日日报
           </el-button>
+          <el-button :icon="Refresh" circle @click="fetchReports" />
         </div>
       </div>
       

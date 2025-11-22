@@ -1,260 +1,136 @@
 <template>
-  <div class="dashboard">
-    <!-- 欢迎信息 -->
-    <div class="welcome-section">
-      <h1>欢迎回来，{{ authStore.user?.full_name || authStore.user?.username }}！</h1>
-      <p>今天是 {{ formatDate(new Date(), 'yyyy年MM月dd日 EEEE') }}</p>
+  <div class="dashboard-container">
+    <!-- Welcome Section -->
+    <div class="welcome-card glass-panel">
+      <div class="welcome-content">
+        <h1>早安，{{ authStore.user?.full_name || authStore.user?.username }}</h1>
+        <p>今天是 {{ formatDate(new Date(), 'yyyy年MM月dd日 EEEE') }}，祝你拥有高效的一天！</p>
+      </div>
+      <div class="welcome-decoration">
+        <div class="leaf-shape"></div>
+      </div>
     </div>
-    
-    <!-- 统计卡片 -->
-    <el-row :gutter="20" class="stats-row">
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stats-card">
-          <div class="stats-content">
-            <div class="stats-icon pending">
-              <el-icon><Clock /></el-icon>
-            </div>
-            <div class="stats-info">
-              <h3>{{ stats.pendingTasks }}</h3>
-              <p>待处理任务</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
+
+    <!-- Stats Grid -->
+    <div class="stats-grid">
+      <div class="stat-card glass-panel">
+        <div class="stat-icon pending">
+          <el-icon><Clock /></el-icon>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value">{{ stats.pendingTasks }}</span>
+          <span class="stat-label">待处理任务</span>
+        </div>
+      </div>
       
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stats-card">
-          <div class="stats-content">
-            <div class="stats-icon progress">
-              <el-icon><Loading /></el-icon>
-            </div>
-            <div class="stats-info">
-              <h3>{{ stats.inProgressTasks }}</h3>
-              <p>进行中任务</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
+      <div class="stat-card glass-panel">
+        <div class="stat-icon progress">
+          <el-icon><Loading /></el-icon>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value">{{ stats.inProgressTasks }}</span>
+          <span class="stat-label">进行中任务</span>
+        </div>
+      </div>
       
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stats-card">
-          <div class="stats-content">
-            <div class="stats-icon completed">
-              <el-icon><Check /></el-icon>
-            </div>
-            <div class="stats-info">
-              <h3>{{ stats.completedTasks }}</h3>
-              <p>已完成任务</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
+      <div class="stat-card glass-panel">
+        <div class="stat-icon completed">
+          <el-icon><Check /></el-icon>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value">{{ stats.completedTasks }}</span>
+          <span class="stat-label">已完成任务</span>
+        </div>
+      </div>
       
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stats-card">
-          <div class="stats-content">
-            <div class="stats-icon reports">
-              <el-icon><Document /></el-icon>
-            </div>
-            <div class="stats-info">
-              <h3>{{ stats.reportsThisWeek }}</h3>
-              <p>本周日报</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-    
-    <!-- 主要内容区 -->
-    <el-row :gutter="20" class="content-row">
-      <!-- 最近任务 -->
-      <el-col :xs="24" :lg="12">
-        <el-card class="content-card">
-          <template #header>
-            <div class="card-header">
-              <span>最近任务</span>
-              <el-button type="text" @click="$router.push('/tasks')">
-                查看全部
-              </el-button>
-            </div>
-          </template>
-          
-          <div v-loading="tasksLoading" class="task-list">
-            <div
-              v-for="task in recentTasks"
-              :key="task.id"
-              class="task-item"
-              @click="viewTask(task)"
-            >
-              <div class="task-info">
-                <h4>{{ task.title }}</h4>
-                <p>{{ task.description }}</p>
-                <div class="task-meta">
-                  <el-tag :type="getTaskStatusType(task.status)" size="small">
-                    {{ getTaskStatusText(task.status) }}
-                  </el-tag>
-                  <span class="task-date">
-                    {{ formatDate(task.created_at) }}
-                  </span>
-                </div>
-              </div>
-            </div>
-            
-            <div v-if="recentTasks.length === 0" class="empty-state">
-              <el-empty description="暂无任务" />
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      
-      <!-- 最近日报 -->
-      <el-col :xs="24" :lg="12">
-        <el-card class="content-card">
-          <template #header>
-            <div class="card-header">
-              <span>最近日报</span>
-              <el-button type="text" @click="$router.push('/reports')">
-                查看全部
-              </el-button>
-            </div>
-          </template>
-          
-          <div v-loading="reportsLoading" class="report-list">
-            <div
-              v-for="report in recentReports"
-              :key="report.id"
-              class="report-item"
-              @click="viewReport(report)"
-            >
-              <div class="report-info">
-                <h4>{{ formatDate(report.work_date) }} 日报</h4>
-                <p>{{ report.work_summary || '暂无摘要' }}</p>
-                <div class="report-meta">
-                  <span class="report-date">
-                    {{ formatDateTime(report.created_at) }}
-                  </span>
-                </div>
-              </div>
-            </div>
-            
-            <div v-if="recentReports.length === 0" class="empty-state">
-              <el-empty description="暂无日报" />
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-    
-    <!-- 图表展示 -->
-    <el-row :gutter="20" class="charts-row">
-      <el-col :xs="24" :lg="12">
-        <el-card class="content-card">
-          <template #header>
-            <span>任务状态分布</span>
-          </template>
-          <TaskChart
-            type="pie"
-            :data="taskStatusData"
-            title=""
-            height="300px"
-          />
-        </el-card>
-      </el-col>
-      
-      <el-col :xs="24" :lg="12">
-        <el-card class="content-card">
-          <template #header>
-            <span>本周任务趋势</span>
-          </template>
+      <div class="stat-card glass-panel">
+        <div class="stat-icon reports">
+          <el-icon><Document /></el-icon>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value">{{ stats.reportsThisWeek }}</span>
+          <span class="stat-label">本周日报</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content Grid (Bento Layout) -->
+    <div class="bento-grid">
+      <!-- Charts Section -->
+      <div class="bento-item chart-card glass-panel">
+        <div class="card-header">
+          <h3>任务趋势</h3>
+        </div>
+        <div class="chart-container">
           <TaskChart
             type="line"
             :data="weeklyTaskData"
-            title=""
-            height="300px"
+            height="100%"
           />
-        </el-card>
-      </el-col>
-    </el-row>
-    
-    <!-- 工作效率分析 -->
-    <el-row :gutter="20" class="efficiency-row">
-      <el-col :span="24">
-        <el-card class="content-card">
-          <template #header>
-            <span>工作效率分析</span>
-          </template>
-          
-          <el-row :gutter="20">
-            <el-col :xs="24" :md="8">
-              <div class="efficiency-item">
-                <h4>平均完成时间</h4>
-                <div class="efficiency-value">
-                  {{ efficiency.avgCompletionTime }}小时
-                </div>
-                <p class="efficiency-desc">任务平均完成时间</p>
-              </div>
-            </el-col>
-            
-            <el-col :xs="24" :md="8">
-              <div class="efficiency-item">
-                <h4>本周完成率</h4>
-                <div class="efficiency-value">
-                  {{ efficiency.weeklyCompletionRate }}%
-                </div>
-                <p class="efficiency-desc">本周任务完成率</p>
-              </div>
-            </el-col>
-            
-            <el-col :xs="24" :md="8">
-              <div class="efficiency-item">
-                <h4>工作时长</h4>
-                <div class="efficiency-value">
-                  {{ efficiency.totalWorkHours }}小时
-                </div>
-                <p class="efficiency-desc">本周总工作时长</p>
-              </div>
-            </el-col>
-          </el-row>
-        </el-card>
-      </el-col>
-    </el-row>
+        </div>
+      </div>
 
-    <!-- 快速操作 -->
-    <el-row :gutter="20" class="quick-actions">
-      <el-col :span="24">
-        <el-card class="content-card">
-          <template #header>
-            <span>快速操作</span>
-          </template>
-          
-          <div class="action-buttons">
-            <el-button
-              type="primary"
-              :icon="Plus"
-              @click="$router.push('/tasks')"
-            >
-              创建任务
-            </el-button>
-            
-            <el-button
-              type="success"
-              :icon="EditPen"
-              @click="$router.push('/reports')"
-            >
-              写日报
-            </el-button>
-            
-            <el-button
-              type="info"
-              :icon="TrendCharts"
-              @click="$router.push('/analytics')"
-            >
-              查看分析
-            </el-button>
+      <div class="bento-item pie-card glass-panel">
+        <div class="card-header">
+          <h3>状态分布</h3>
+        </div>
+        <div class="chart-container">
+          <TaskChart
+            type="pie"
+            :data="taskStatusData"
+            height="100%"
+          />
+        </div>
+      </div>
+
+      <!-- Recent Tasks -->
+      <div class="bento-item tasks-card glass-panel">
+        <div class="card-header">
+          <h3>最近任务</h3>
+          <el-button text class="view-all-btn" @click="$router.push('/tasks')">
+            查看全部 <el-icon><ArrowRight /></el-icon>
+          </el-button>
+        </div>
+        <div class="list-container" v-loading="tasksLoading">
+          <div
+            v-for="task in recentTasks"
+            :key="task.id"
+            class="list-item"
+            @click="viewTask(task)"
+          >
+            <div class="item-content">
+              <span class="item-title">{{ task.title }}</span>
+              <span class="item-desc">{{ task.description }}</span>
+            </div>
+            <el-tag :type="getTaskStatusType(task.status)" size="small" effect="light" round>
+              {{ getTaskStatusText(task.status) }}
+            </el-tag>
           </div>
-        </el-card>
-      </el-col>
-    </el-row>
+          <el-empty v-if="recentTasks.length === 0" description="暂无任务" :image-size="60" />
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="bento-item actions-card glass-panel">
+        <div class="card-header">
+          <h3>快速操作</h3>
+        </div>
+        <div class="actions-grid">
+          <div class="action-btn primary" @click="$router.push('/tasks')">
+            <el-icon><Plus /></el-icon>
+            <span>新建任务</span>
+          </div>
+          <div class="action-btn success" @click="$router.push('/reports')">
+            <el-icon><EditPen /></el-icon>
+            <span>写日报</span>
+          </div>
+          <div class="action-btn info" @click="$router.push('/analytics')">
+            <el-icon><TrendCharts /></el-icon>
+            <span>看分析</span>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -268,537 +144,343 @@ import Document from '~icons/tabler/file-text'
 import Plus from '~icons/tabler/plus'
 import EditPen from '~icons/tabler/edit'
 import TrendCharts from '~icons/tabler/chart-line'
+import ArrowRight from '~icons/tabler/arrow-right'
 import { useAuthStore } from '@/stores/auth'
-import { formatDate, formatDateTime, getWeekStartEnd, getMonthStartEnd } from '@/utils/date'
+import { formatDate, getWeekStartEnd } from '@/utils/date'
 import api from '@/utils/api'
 import TaskChart from '@/components/Charts/TaskChart.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
 
-// 统计数据
+// Data
 const stats = reactive({
   pendingTasks: 0,
   inProgressTasks: 0,
   completedTasks: 0,
   reportsThisWeek: 0
 })
-
-// 最近任务
 const recentTasks = ref([])
 const tasksLoading = ref(false)
-
-// 最近日报
-const recentReports = ref([])
-const reportsLoading = ref(false)
-
-// 图表数据
 const taskStatusData = ref([])
 const weeklyTaskData = ref([])
 
-// 工作效率数据
-const efficiency = reactive({
-  avgCompletionTime: 0,
-  weeklyCompletionRate: 0,
-  totalWorkHours: 0
-})
-
-// 获取任务状态类型
+// Helpers
 const getTaskStatusType = (status) => {
-  const statusMap = {
-    'pending': 'warning',
-    'processing': 'primary',
-    'done': 'success'
-  }
-  return statusMap[status] || 'info'
+  const map = { pending: 'warning', processing: 'primary', done: 'success' }
+  return map[status] || 'info'
 }
-
-// 获取任务状态文本
 const getTaskStatusText = (status) => {
-  const statusMap = {
-    'pending': '待处理',
-    'processing': '进行中',
-    'done': '已完成'
-  }
-  return statusMap[status] || status
+  const map = { pending: '待处理', processing: '进行中', done: '已完成' }
+  return map[status] || status
 }
+const viewTask = (task) => router.push(`/tasks?openTaskId=${task.id}`)
 
+// Fetch Data
+const fetchData = async () => {
+  if (!authStore.isAuthenticated) return
 
-
-// 查看任务详情
-const viewTask = (task) => {
-  router.push(`/tasks/${parseInt(task.id)}`)
-}
-
-// 查看日报详情
-const viewReport = (report) => {
-  router.push(`/reports/${parseInt(report.id)}`)
-}
-
-// 获取统计数据（按用户所在组过滤）
-const fetchStats = async () => {
-  if (!authStore.isAuthenticated) {
-    console.log('User not authenticated, skipping stats fetch')
-    return
-  }
-  
   try {
-    // 统计卡片：优先使用按组过滤的分析接口（按本周范围对齐趋势图）
-    const groupId = authStore.user?.group_id ?? null
-    const [weekStartForStatus, weekEndForStatus] = getWeekStartEnd(new Date())
-    const chartsResp = await api.get('/analytics/charts', {
-      params: {
-        start_date: weekStartForStatus,
-        end_date: weekEndForStatus,
-        ...(groupId ? { group_id: groupId } : {})
-      }
-    })
+    // Stats & Charts
+    const groupId = authStore.user?.group_id
+    const [weekStart, weekEnd] = getWeekStartEnd(new Date())
+    
+    // Parallel requests
+    const [chartsResp, statsResp, tasksResp] = await Promise.all([
+      api.get('/analytics/charts', { params: { start_date: weekStart, end_date: weekEnd, group_id: groupId } }),
+      api.get('/analytics/stats', { params: { start_date: weekStart, end_date: weekEnd, group_id: groupId } }),
+      api.get('/tasks', { params: { page: 1, size: 5 } })
+    ])
+
+    // Process Charts
     const charts = chartsResp.data || {}
-    const statusArr = charts.taskStatus || charts.task_status || []
+    const statusArr = charts.taskStatus || []
     const toMap = (name) => {
-      const item = statusArr.find(s => (s.name === name || s.status === name))
+      const item = statusArr.find(s => s.name === name || s.status === name)
       return item ? (item.value ?? item.count ?? 0) : 0
     }
     stats.pendingTasks = toMap('pending')
     stats.inProgressTasks = toMap('processing')
     stats.completedTasks = toMap('done')
-
-    // 更新任务状态图表数据（展示中文标签）
+    
     taskStatusData.value = [
       { name: '待处理', value: stats.pendingTasks },
       { name: '进行中', value: stats.inProgressTasks },
       { name: '已完成', value: stats.completedTasks }
     ]
 
-    // 本周日报数量：按组过滤的统计接口
-    const [weekStart, weekEnd] = getWeekStartEnd(new Date())
-    const statsResp = await api.get('/analytics/stats', {
-      params: {
-        start_date: weekStart,
-        end_date: weekEnd,
-        ...(groupId ? { group_id: groupId } : {})
-      }
-    })
-    const sdata = statsResp.data || {}
-    stats.reportsThisWeek = sdata.totalReports ?? 0
-  } catch (error) {
-    console.error('Failed to fetch stats:', error)
-    if (error.response?.status === 401) {
-      authStore.logout()
-      router.push('/login')
-    }
-  }
-}
-
-// 获取本周任务趋势数据（按用户所在组过滤）
-const fetchWeeklyTrend = async () => {
-  if (!authStore.isAuthenticated) {
-    console.log('User not authenticated, skipping weekly trend fetch')
-    return
-  }
-  
-  try {
-    const groupId = authStore.user?.group_id ?? null
-    const [weekStart, weekEnd] = getWeekStartEnd(new Date())
-    const response = await api.get('/analytics/charts', {
-      params: {
-        start_date: weekStart,
-        end_date: weekEnd,
-        ...(groupId ? { group_id: groupId } : {})
-      }
-    })
-    const trend = (response.data?.taskTrend || response.data?.task_trend || [])
-    // 选择“已完成”作为趋势展示值
+    const trend = charts.taskTrend || []
     weeklyTaskData.value = trend.map(item => ({
       name: item.date,
       value: item.completed ?? item.count ?? 0
     }))
+
+    // Process Stats
+    stats.reportsThisWeek = statsResp.data?.totalReports ?? 0
+
+    // Process Tasks
+    recentTasks.value = Array.isArray(tasksResp.data) ? tasksResp.data : (tasksResp.data?.items || [])
+
   } catch (error) {
-    console.error('Failed to fetch weekly trend:', error)
-    if (error.response?.status === 401) {
-      authStore.logout()
-      router.push('/login')
-      return
-    }
-    // 失败时不使用模拟数据，保持为空以反映真实情况
-    weeklyTaskData.value = []
+    console.error('Dashboard data fetch error:', error)
   }
 }
 
-// 获取工作效率数据（尽可能按组过滤本周完成率）
-const fetchEfficiency = async () => {
-  if (!authStore.isAuthenticated) {
-    console.log('User not authenticated, skipping efficiency fetch')
-    return
-  }
-  
-  try {
-    // 使用真实后端端点
-    const response = await api.get('/stats/overview')
-    const data = response.data || {}
-    efficiency.avgCompletionTime = data.avgCompletionTime ?? 0
-    efficiency.totalWorkHours = data.totalWorkHours ?? 0
-
-    // 覆盖本周完成率为“按组过滤”的值
-    const groupId = authStore.user?.group_id ?? null
-    const [weekStart, weekEnd] = getWeekStartEnd(new Date())
-    const statsResp = await api.get('/analytics/stats', {
-      params: {
-        start_date: weekStart,
-        end_date: weekEnd,
-        ...(groupId ? { group_id: groupId } : {})
-      }
-    })
-    const sdata = statsResp.data || {}
-    efficiency.weeklyCompletionRate = sdata.completionRate ?? (data.weeklyCompletionRate ?? 0)
-  } catch (error) {
-    console.error('Failed to fetch efficiency:', error)
-    if (error.response?.status === 401) {
-      authStore.logout()
-      router.push('/login')
-      return
-    }
-    // 不使用模拟数据，保持默认值
-    efficiency.avgCompletionTime = 0
-    efficiency.totalWorkHours = 0
-    // 尝试保留已有的本周完成率值（若可用）
-    try {
-      const groupId = authStore.user?.group_id ?? null
-      const [weekStart, weekEnd] = getWeekStartEnd(new Date())
-      const statsResp = await api.get('/analytics/stats', {
-        params: {
-          start_date: weekStart,
-          end_date: weekEnd,
-          ...(groupId ? { group_id: groupId } : {})
-        }
-      })
-      efficiency.weeklyCompletionRate = statsResp.data?.completionRate ?? 0
-    } catch (e) {
-      efficiency.weeklyCompletionRate = 0
-    }
-  }
-}
-
-// 获取最近任务
-const fetchRecentTasks = async () => {
-  if (!authStore.isAuthenticated) {
-    console.log('User not authenticated, skipping recent tasks fetch')
-    return
-  }
-  
-  tasksLoading.value = true
-  try {
-    const response = await api.get('/tasks', {
-      params: { page: 1, size: 5 }
-    })
-    const data = response.data
-    if (Array.isArray(data)) {
-      recentTasks.value = data
-    } else if (data && typeof data === 'object') {
-      recentTasks.value = data.items || data.data || []
-    } else {
-      recentTasks.value = []
-    }
-  } catch (error) {
-    console.error('Failed to fetch recent tasks:', error)
-    if (error.response?.status === 401) {
-      authStore.logout()
-      router.push('/login')
-      return
-    }
-  } finally {
-    tasksLoading.value = false
-  }
-}
-
-// 获取最近日报
-const fetchRecentReports = async () => {
-  if (!authStore.isAuthenticated) {
-    console.log('User not authenticated, skipping reports fetch')
-    return
-  }
-  
-  reportsLoading.value = true
-  try {
-    const [weekStart, weekEnd] = getWeekStartEnd(new Date())
-    const groupId = authStore.user?.group_id ?? null
-    const response = await api.get('/reports', {
-      params: {
-        page: 1,
-        size: 5,
-        start_date: weekStart,
-        end_date: weekEnd,
-        ...(groupId ? { group_id: groupId } : {})
-      }
-    })
-    const data = response.data
-    if (Array.isArray(data)) {
-      recentReports.value = data
-    } else if (data && typeof data === 'object') {
-      recentReports.value = data.items || data.data || []
-    } else {
-      recentReports.value = []
-    }
-  } catch (error) {
-    console.error('Failed to fetch recent reports:', error)
-    if (error.response?.status === 401) {
-      authStore.logout()
-      router.push('/login')
-      return
-    }
-  } finally {
-    reportsLoading.value = false
-  }
-}
-
-// 初始化数据
-onMounted(async () => {
-  // 检查认证状态
-  if (!authStore.isAuthenticated) {
-    router.push('/login')
-    return
-  }
-  
-  // 尝试获取用户信息以验证token有效性
-  try {
-    await authStore.fetchUserInfo()
-  } catch (error) {
-    console.error('Token validation failed:', error)
-    router.push('/login')
-    return
-  }
-  
-  // 并行获取数据
-  await Promise.allSettled([
-    fetchStats(),
-    fetchWeeklyTrend(),
-    fetchEfficiency(),
-    fetchRecentTasks(),
-    fetchRecentReports()
-  ])
-})
+onMounted(fetchData)
 </script>
 
 <style scoped>
-.dashboard {
-  max-width: 1400px;
+.dashboard-container {
+  max-width: 1600px;
   margin: 0 auto;
-  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
-.welcome-section {
-  margin-bottom: 32px;
-  padding: 24px;
+/* Welcome Section */
+.welcome-card {
+  padding: 32px;
   border-radius: var(--radius-xl);
-  background: linear-gradient(
-    135deg,
-    rgba(16, 185, 129, 0.05) 0%,
-    rgba(110, 231, 183, 0.03) 100%
-  );
-  border: 1px solid rgba(16, 185, 129, 0.1);
-}
-
-.welcome-section h1 {
-  font-size: 32px;
-  font-weight: 700;
-  margin: 0 0 8px 0;
-  background: var(--gradient-emerald);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  letter-spacing: -0.5px;
-}
-
-.welcome-section p {
-  color: var(--text-muted);
-  font-size: 16px;
-  margin: 0;
-  font-weight: 500;
-}
-
-.stats-row {
-  margin-bottom: 32px;
-}
-
-.stats-card {
-  margin-bottom: 20px;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%);
   position: relative;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.stats-card::before {
-  content: '';
+.welcome-content h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-strong);
+  margin-bottom: 8px;
+}
+
+.welcome-content p {
+  color: var(--text-muted);
+  font-size: 16px;
+}
+
+.welcome-decoration {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
+  right: -50px;
+  top: -50px;
+  width: 200px;
+  height: 200px;
   background: var(--gradient-primary);
-  transform: scaleX(0);
+  opacity: 0.1;
+  border-radius: 50%;
+  filter: blur(40px);
+}
+
+/* Stats Grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+}
+
+.stat-card {
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
   transition: transform 0.3s ease;
 }
 
-.stats-card:hover::before {
-  transform: scaleX(1);
+.stat-card:hover {
+  transform: translateY(-4px);
 }
 
-.stats-card:hover {
-  transform: translateY(-6px);
-}
-
-.stats-content {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 8px 0;
-}
-
-.stats-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: var(--radius-md);
+.stat-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 28px;
+  font-size: 24px;
   color: white;
-  position: relative;
-  box-shadow: var(--shadow-glow-soft);
-  transition: all 0.3s ease;
 }
 
-.stats-card:hover .stats-icon {
-  transform: scale(1.1) rotate(5deg);
-  box-shadow: var(--shadow-glow);
-}
+.stat-icon.pending { background: #f59e0b; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3); }
+.stat-icon.progress { background: #3b82f6; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); }
+.stat-icon.completed { background: #10b981; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
+.stat-icon.reports { background: #8b5cf6; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3); }
 
-.stats-icon.pending {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-}
-
-.stats-icon.progress {
-  background: var(--gradient-cyber-green);
-}
-
-.stats-icon.completed {
-  background: var(--gradient-emerald);
-}
-
-.stats-icon.reports {
-  background: var(--gradient-nature);
-}
-
-.stats-info {
-  flex: 1;
-}
-
-.stats-info h3 {
-  font-size: 32px;
-  font-weight: 700;
-  margin: 0 0 4px 0;
-  background: var(--gradient-primary);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  line-height: 1;
-}
-
-.stats-info p {
-  color: var(--text-muted);
-  font-size: 14px;
-  margin: 0;
-  font-weight: 500;
-}
-
-.content-row {
-  margin-bottom: 32px;
-}
-
-.content-card {
-  margin-bottom: 20px;
-  height: 450px;
+.stat-info {
   display: flex;
   flex-direction: column;
 }
 
-.content-card :deep(.el-card__body) {
-  flex: 1;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.charts-row {
-  margin-bottom: 32px;
-}
-
-.charts-row .content-card {
-  height: 420px;
-}
-
-.efficiency-row {
-  margin-bottom: 32px;
-}
-
-.efficiency-item {
-  text-align: center;
-  padding: 28px 20px;
-  border-radius: var(--radius-lg);
-  background: var(--gradient-primary);
-  color: white;
-  margin-bottom: 20px;
-  box-shadow: var(--shadow-glow-soft);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  overflow: hidden;
-}
-
-.efficiency-item::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.1) 0%,
-    transparent 50%
-  );
-  pointer-events: none;
-}
-
-.efficiency-item:hover {
-  transform: translateY(-4px) scale(1.02);
-  box-shadow: var(--shadow-glow);
-}
-
-.efficiency-item h4 {
-  font-size: 15px;
-  margin: 0 0 12px 0;
-  opacity: 0.9;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.efficiency-value {
-  font-size: 40px;
+.stat-value {
+  font-size: 24px;
   font-weight: 700;
-  margin: 16px 0;
-  line-height: 1;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  color: var(--text-strong);
+  line-height: 1.2;
 }
 
-.efficiency-desc {
+.stat-label {
   font-size: 13px;
-  margin: 0;
-  opacity: 0.85;
+  color: var(--text-muted);
+}
+
+/* Bento Grid */
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(2, minmax(300px, auto));
+  gap: 24px;
+}
+
+.bento-item {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-card {
+  grid-column: span 3;
+}
+
+.pie-card {
+  grid-column: span 1;
+}
+
+.tasks-card {
+  grid-column: span 2;
+  height: 400px;
+}
+
+.actions-card {
+  grid-column: span 2;
+  height: 400px;
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 20px;
+}
+
+.card-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin: 0;
+}
+
+.chart-container {
+  flex: 1;
+  min-height: 0;
+}
+
+.list-container {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border-radius: 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.list-item:hover {
+  background: var(--bg-soft);
+}
+
+.item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.item-title {
+  font-weight: 500;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.actions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  height: 100%;
+}
+
+.action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 1px solid transparent;
+}
+
+.action-btn:hover {
+  transform: translateY(-4px);
+  background: white;
+  box-shadow: var(--shadow-md);
+}
+
+.action-btn .el-icon {
+  font-size: 32px;
+  padding: 16px;
+  border-radius: 50%;
+  color: white;
+}
+
+.action-btn span {
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.action-btn.primary .el-icon { background: var(--color-primary); box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
+.action-btn.success .el-icon { background: #8b5cf6; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3); }
+.action-btn.info .el-icon { background: #3b82f6; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); }
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .bento-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .chart-card, .pie-card, .tasks-card, .actions-card {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 768px) {
+  .bento-grid {
+    grid-template-columns: 1fr;
+  }
+  .chart-card, .pie-card, .tasks-card, .actions-card {
+    grid-column: span 1;
+  }
+}
+</style>ign-items: center;
   font-weight: 600;
   color: var(--text-strong);
 }

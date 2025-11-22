@@ -21,53 +21,55 @@
         </div>
       </template>
       
-      <div class="table-toolbar">
-        <div class="table-filters">
-          <el-select v-model="filters.status" placeholder="状态" clearable>
+      <div class="toolbar-container">
+        <div class="filter-group">
+          <el-input
+            v-model="filters.search"
+            placeholder="搜索任务..."
+            :prefix-icon="Search"
+            clearable
+            class="search-input"
+          />
+          
+          <el-select v-model="filters.status" placeholder="状态" clearable class="filter-select">
             <el-option label="待处理" value="pending" />
             <el-option label="进行中" value="processing" />
             <el-option label="已完成" value="done" />
           </el-select>
           
-          <el-select v-model="filters.priority" placeholder="优先级" clearable>
+          <el-select v-model="filters.priority" placeholder="优先级" clearable class="filter-select">
             <el-option label="低" value="low" />
             <el-option label="中" value="medium" />
             <el-option label="高" value="high" />
             <el-option label="紧急" value="urgent" />
           </el-select>
 
-          <el-select v-model="filters.task_type" placeholder="任务类型" clearable>
+          <el-select v-model="filters.task_type" placeholder="任务类型" clearable class="filter-select">
             <el-option label="金额" value="amount" />
             <el-option label="数量" value="quantity" />
             <el-option label="接龙" value="jielong" />
             <el-option label="勾选" value="checkbox" />
           </el-select>
+        </div>
+        
+        <div class="action-group">
+          <!-- 管理员专用功能 -->
+          <template v-if="authStore.isAdmin || authStore.isSuperAdmin">
+            <el-button type="info" plain @click="showTaskStats">
+              任务统计
+            </el-button>
+            <el-button 
+              v-can="'tasks:assign'"
+              type="warning" 
+              plain
+              @click="showBatchAssign"
+              :disabled="selectedTasks.length === 0"
+            >
+              批量分配 ({{ selectedTasks.length }})
+            </el-button>
+          </template>
           
-          <el-input
-            v-model="filters.search"
-            placeholder="搜索任务..."
-            :prefix-icon="Search"
-            clearable
-          />
-        </div>
-        
-        <!-- 管理员专用功能 -->
-        <div v-can="'tasks:manage:group'" class="admin-actions">
-          <el-button type="info" @click="showTaskStats">
-            任务统计
-          </el-button>
-          <el-button 
-            v-can="'tasks:assign'"
-            type="warning" 
-            @click="showBatchAssign"
-            :disabled="selectedTasks.length === 0"
-          >
-            批量分配 ({{ selectedTasks.length }})
-          </el-button>
-        </div>
-        
-        <div class="table-actions">
-          <el-button :icon="Refresh" @click="fetchTasks">刷新</el-button>
+          <el-button :icon="Refresh" circle @click="fetchTasks" />
         </div>
       </div>
       

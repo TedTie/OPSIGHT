@@ -1,16 +1,20 @@
 <template>
   <el-container class="app-layout">
-    <!-- 侧边栏 -->
+    <!-- Sidebar (Floating) -->
     <AppSidebar :collapsed="sidebarCollapsed" />
     
-    <!-- 主内容区 -->
-  <el-container class="main-container">
-      <!-- 头部 -->
+    <!-- Main Content -->
+    <el-container class="main-container">
+      <!-- Header (Transparent) -->
       <AppHeader @toggle-sidebar="toggleSidebar" />
       
-      <!-- 内容区 -->
-      <el-main class="app-main bubble-bg" v-click-spark="{ color: 'rgb(153,255,133)' }">
-        <router-view />
+      <!-- Content Area -->
+      <el-main class="app-main">
+        <router-view v-slot="{ Component }">
+          <transition name="fade" mode="out-in">
+            <component :is="Component" />
+          </transition>
+        </router-view>
       </el-main>
     </el-container>
   </el-container>
@@ -21,10 +25,8 @@ import { ref } from 'vue'
 import AppHeader from './AppHeader.vue'
 import AppSidebar from './AppSidebar.vue'
 
-// 侧边栏折叠状态
-const sidebarCollapsed = ref(true)
+const sidebarCollapsed = ref(false)
 
-// 切换侧边栏
 const toggleSidebar = () => {
   sidebarCollapsed.value = !sidebarCollapsed.value
 }
@@ -34,6 +36,10 @@ const toggleSidebar = () => {
 .app-layout {
   height: 100vh;
   overflow: hidden;
+  background-color: var(--bg-page);
+  background-image: 
+    radial-gradient(circle at 90% 10%, rgba(16, 185, 129, 0.03) 0%, transparent 40%),
+    radial-gradient(circle at 10% 90%, rgba(252, 211, 77, 0.03) 0%, transparent 40%);
 }
 
 .main-container {
@@ -41,18 +47,35 @@ const toggleSidebar = () => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
 }
 
 .app-main {
   flex: 1;
-  padding: 20px;
-  background: var(--bg-page);
+  padding: 0 32px 32px 32px; /* Adjust padding for floating layout */
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
-/* 保持 bubble-bg 样式控制层级 */
+/* Scrollbar styling for main content */
+.app-main::-webkit-scrollbar {
+  width: 8px;
+}
 
-/* 响应式设计 */
+.app-main::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-main::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+}
+
+.app-main::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+/* Responsive */
 @media (max-width: 768px) {
   .app-main {
     padding: 16px;

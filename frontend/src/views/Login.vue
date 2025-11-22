@@ -1,7 +1,10 @@
 <template>
   <div class="login-container">
-    <div class="login-card">
+    <div class="login-card glass-panel">
       <div class="login-header">
+        <div class="logo-container">
+          <img src="@/assets/logo.png" alt="OPSIGHT Logo" class="login-logo" />
+        </div>
         <h1>OPSIGHT</h1>
         <p>智能任务与日报管理系统</p>
       </div>
@@ -20,6 +23,7 @@
             size="large"
             :prefix-icon="User"
             clearable
+            class="custom-input"
             @keyup.enter="handleLogin"
           />
         </el-form-item>
@@ -31,6 +35,7 @@
             size="large"
             :prefix-icon="Lock"
             show-password
+            class="custom-input"
             @keyup.enter="handleLogin"
           />
         </el-form-item>
@@ -125,193 +130,81 @@ const handleLogin = async () => {
   padding: 20px;
   position: relative;
   overflow: hidden;
-  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 50%, #d1fae5 100%);
+  background-color: #fdfdf9; /* Warm white base */
+  background-image: 
+    radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 90% 80%, rgba(252, 211, 77, 0.08) 0%, transparent 40%);
 }
 
-/* 轻盈装饰 */
+/* Floating decorations */
 .login-container::before {
   content: '';
   position: absolute;
-  inset: 0;
-  background: 
-    radial-gradient(circle at 20% 30%, rgba(16, 185, 129, 0.08) 0%, transparent 50%),
-    radial-gradient(circle at 80% 70%, rgba(110, 231, 183, 0.06) 0%, transparent 50%);
+  top: -100px;
+  left: -100px;
+  width: 400px;
+  height: 400px;
+  background: var(--gradient-primary);
+  opacity: 0.05;
+  border-radius: 50%;
+  filter: blur(60px);
+  animation: float 15s ease-in-out infinite;
 }
 
-/* 浮动几何装饰 */
 .login-container::after {
   content: '';
   position: absolute;
-  width: 600px;
-  height: 600px;
+  bottom: -50px;
+  right: -50px;
+  width: 300px;
+  height: 300px;
+  background: var(--gradient-nature);
+  opacity: 0.05;
   border-radius: 50%;
-  top: -200px;
-  right: -200px;
-  background: radial-gradient(circle, rgba(16, 185, 129, 0.05) 0%, transparent 70%);
-  animation: float 20s ease-in-out infinite;
+  filter: blur(50px);
+  animation: float 20s ease-in-out infinite reverse;
 }
 
 @keyframes float {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(-50px, 50px) scale(1.1); }
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(30px, -30px); }
 }
 
 .login-card {
   width: 100%;
-  max-width: 420px;
-  position: relative;
-  z-index: 1;
-  
-  /* 明亮卡片 */
-  background: #ffffff;
-  border-radius: var(--radius-2xl);
-  border: 1px solid rgba(16, 185, 129, 0.15);
-  box-shadow: 
-    0 20px 60px rgba(15, 23, 42, 0.12),
-    0 0 0 1px rgba(16, 185, 129, 0.1);
-  
+  max-width: 440px;
   padding: 48px 40px;
   text-align: center;
-  
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.login-card:hover {
-  border-color: rgba(16, 185, 129, 0.3);
+  position: relative;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
   box-shadow: 
-    0 24px 70px rgba(15, 23, 42, 0.15),
-    0 0 0 1px rgba(16, 185, 129, 0.2);
-  transform: translateY(-4px);
+    0 20px 40px -10px rgba(16, 185, 129, 0.1),
+    0 0 0 1px rgba(16, 185, 129, 0.05);
 }
 
 .login-header {
   margin-bottom: 40px;
-  position: relative;
 }
 
-.login-header h1 {
-  font-size: 36px;
-  font-weight: 700;
-  margin: 0 0 12px 0;
-  
-  /* 渐变文字 */
-  background: var(--gradient-emerald);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  
-  /* 呼吸动画 */
-  animation: breathe 4s ease-in-out infinite;
-  letter-spacing: -0.5px;
+.logo-container {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
+  border-radius: 24px;
+  box-shadow: 
+    0 10px 20px -5px rgba(16, 185, 129, 0.15),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.5);
 }
 
-@keyframes breathe {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.9;
-    transform: scale(1.02);
-  }
+.login-logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
 }
-
-.login-header p {
-  color: var(--text-muted);
-  font-size: 15px;
-  margin: 0;
-  font-weight: 500;
-}
-
-.login-form {
-  text-align: left;
-}
-
-/* 增强表单项 */
-:deep(.el-form-item) {
-  margin-bottom: 24px;
-}
-
-:deep(.el-input__wrapper) {
-  background: var(--surface);
-  border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-sm);
-  transition: all 0.3s ease;
-}
-
-:deep(.el-input__wrapper:hover) {
-  border-color: var(--border-color-hover);
-}
-
-/* 聚焦时的绿色发光 */
-:deep(.el-input__wrapper.is-focus) {
-  border-color: var(--color-primary);
-  box-shadow: var(--shadow-glow);
-}
-
-:deep(.el-input__inner) {
-  color: var(--text-normal);
-  font-weight: 500;
-}
-
-:deep(.el-input__inner::placeholder) {
-  color: var(--text-disabled);
-}
-
-/* Checkbox样式 */
-:deep(.el-checkbox__label) {
-  color: var(--text-muted);
-  font-size: 14px;
-}
-
-.login-button {
-  width: 100%;
-  height: 50px;
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  
-  background: var(--gradient-primary);
-  border: none;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
-  
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.login-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(16, 185, 129, 0.35);
-}
-
-.login-button:active {
-  transform: translateY(0);
-}
-
-.login-footer {
-  margin-top: 32px;
-  padding-top: 24px;
-  border-top: 1px solid var(--border-color);
-}
-
-.login-footer p {
-  color: var(--text-muted);
-  font-size: 13px;
-  margin: 0;
-}
-
-/* 响应式设计 */
-@media (max-width: 480px) {
-  .login-card {
-    padding: 36px 28px;
-  }
-  
-  .login-header h1 {
-    font-size: 30px;
-  }
-  
-  .login-button {
-    height: 46px;
-    font-size: 15px;
-  }
-}
-</style>
