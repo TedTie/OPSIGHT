@@ -1,19 +1,15 @@
 /* ====================================
-   2025 Green Dashboard Design System
+   Crextio Green Dashboard Design System
    ==================================== */
 
 :root {
-  /* ========== Color Palette (Green/White) ========== */
+  /* ========== Crextio Color Palette ========== */
 
-  /* Primary Green */
-  --color-primary: #10b981;
-  /* Emerald 500 */
-  --color-primary-light: #34d399;
-  /* Emerald 400 */
-  --color-primary-dark: #059669;
-  /* Emerald 600 */
-  --color-primary-soft: #ecfdf5;
-  /* Emerald 50 */
+  /* Primary Green (Crextio) */
+  --color-primary: #00C589;
+  --color-primary-hover: #00AF75;
+  --color-primary-light: #DFFBF1;
+  --color-primary-glass: #ECFFF8;
 
   /* Accent Colors */
   --color-accent-yellow: #fcd34d;
@@ -22,40 +18,44 @@
   /* Blue 500 */
 
   /* Semantic Colors */
-  --color-success: #10b981;
+  --color-success: #00C589;
   --color-warning: #f59e0b;
   --color-error: #ef4444;
   --color-info: #3b82f6;
 
   /* Gradients */
-  --gradient-primary: linear-gradient(135deg, #34d399 0%, #10b981 100%);
-  --gradient-soft: linear-gradient(135deg, #ecfdf5 0%, #ffffff 100%);
+  --gradient-primary: linear-gradient(135deg, #00C589 0%, #00AF75 100%);
+  --gradient-page: linear-gradient(180deg, #F9FFFC 0%, #EEF7F4 100%);
+  --gradient-soft: linear-gradient(135deg, #DFFBF1 0%, #ffffff 100%);
 
   /* Backgrounds */
-  --bg-page: #fdfdf9;
-  /* Warm White / Paper */
+  --bg-page: #F9FFFC;
+  /* Crextio Page Background (will be used with gradient) */
   --bg-elevated: #ffffff;
   /* Pure White */
-  --bg-soft: #f3f4f6;
-  /* Light Gray */
+  --bg-soft: #F9FFFC;
+  /* Light Mint */
   --surface: #ffffff;
   --surface-hover: #f9fafb;
 
-  /* Text Colors */
-  --text-strong: #1f2937;
-  /* Gray 800 */
-  --text-normal: #4b5563;
-  /* Gray 600 */
-  --text-muted: #9ca3af;
-  /* Gray 400 */
+  /* Glass Panel (Crextio Spec) */
+  --glass-bg: rgba(255, 255, 255, 0.78);
+  --glass-border: rgba(255, 255, 255, 0.4);
+
+  /* Text Colors (Crextio Spec) */
+  --text-strong: #1A1F1C;
+  /* Titles */
+  --text-normal: #4B5563;
+  /* Body */
+  --text-muted: #9CA3AF;
+  /* Subtle/Labels */
   --text-disabled: #d1d5db;
-  /* Gray 300 */
+  /* Disabled */
 
   /* Borders */
   --border-color: #e5e7eb;
   /* Gray 200 */
-  --border-color-hover: #d1d5db;
-  /* Gray 300 */
+  --border-color-hover: #00C589;
 
   /* Typography */
   --font-family: 'Inter', 'Outfit', sans-serif;
@@ -65,18 +65,18 @@
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
 
-  /* Radius */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
+  /* Radius (Crextio: 20-28px) */
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
   --radius-xl: 24px;
-  /* Large rounded corners for cards */
+  --radius-2xl: 28px;
 
-  /* Shadows (Soft & Green-tinted) */
-  --shadow-sm: 0 1px 2px 0 rgba(16, 185, 129, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(16, 185, 129, 0.08), 0 2px 4px -1px rgba(16, 185, 129, 0.04);
-  --shadow-lg: 0 10px 15px -3px rgba(16, 185, 129, 0.08), 0 4px 6px -2px rgba(16, 185, 129, 0.04);
-  --shadow-glow: 0 0 15px rgba(16, 185, 129, 0.15);
+  /* Shadows (Crextio Spec) */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.06);
+  --shadow-glow: 0 0 0 3px rgba(0, 197, 137, 0.15);
 
   /* Element Plus Overrides */
   --el-color-primary: var(--color-primary);
@@ -94,7 +94,7 @@ body {
   height: 100%;
   font-family: var(--font-family);
   font-size: var(--font-size-base);
-  background-color: var(--bg-page);
+  background: var(--gradient-page);
   color: var(--text-normal);
   -webkit-font-smoothing: antialiased;
   margin: 0;
@@ -109,12 +109,14 @@ body {
    Utility Classes
    ==================================== */
 
-/* Glass Panel Effect */
+/* Glass Panel Effect (Crextio) */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-lg);
+  border-radius: var(--radius-xl);
 }
 
 /* Toolbar Layout (Standardized) */

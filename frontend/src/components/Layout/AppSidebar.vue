@@ -125,12 +125,14 @@ const isAdmin = computed(() => {
 .sidebar-container {
   height: 100%;
   border-radius: var(--radius-xl);
-  background: #ffffff;
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: none;
+  border: 1px solid var(--glass-border);
 }
 
 .sidebar-logo {
@@ -142,10 +144,11 @@ const isAdmin = computed(() => {
   padding: 20px;
 }
 
-.logo-img {
-  width: 32px;
-  height: 32px;
+.sidebar-logo-img {
+  width: 36px;
+  height: 36px;
   object-fit: contain;
+  flex-shrink: 0;
 }
 
 .logo-text {
@@ -163,7 +166,7 @@ const isAdmin = computed(() => {
   overflow-y: auto;
 }
 
-/* Menu Items */
+/* Menu Items (Crextio Style) */
 :deep(.el-menu-item) {
   height: 48px;
   line-height: 48px;
@@ -175,26 +178,14 @@ const isAdmin = computed(() => {
 }
 
 :deep(.el-menu-item:hover) {
-  background: var(--bg-soft);
+  background: var(--color-primary-light);
   color: var(--color-primary);
 }
 
 :deep(.el-menu-item.is-active) {
-  background: var(--color-primary-soft);
+  background: var(--color-primary-light);
   color: var(--color-primary);
   font-weight: 600;
-}
-
-/* Active Indicator */
-:deep(.el-menu-item.is-active)::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 10px;
-  bottom: 10px;
-  width: 4px;
-  background: var(--color-primary);
-  border-radius: 0 4px 4px 0;
 }
 
 /* Icons */
@@ -219,18 +210,28 @@ const isAdmin = computed(() => {
 }
 
 :deep(.el-sub-menu__title:hover) {
-  background: var(--bg-soft);
+  background: var(--color-primary-light);
   color: var(--color-primary);
 }
 
-/* Collapsed State */
+/* Collapsed State - Center Content */
+:deep(.el-menu--collapse) {
+  width: 100%;
+}
+
 :deep(.el-menu--collapse .el-menu-item) {
-  padding: 0;
+  padding: 0 !important;
+  text-align: center;
+  display: flex;
+  align-items: center;
   justify-content: center;
 }
 
 :deep(.el-menu--collapse .el-sub-menu__title) {
-  padding: 0;
+  padding: 0 !important;
+  text-align: center;
+  display: flex;
+  align-items: center;
   justify-content: center;
 }
 

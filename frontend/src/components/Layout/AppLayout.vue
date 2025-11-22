@@ -36,10 +36,7 @@ const toggleSidebar = () => {
 .app-layout {
   height: 100vh;
   overflow: hidden;
-  background-color: var(--bg-page);
-  background-image: 
-    radial-gradient(circle at 90% 10%, rgba(16, 185, 129, 0.03) 0%, transparent 40%),
-    radial-gradient(circle at 10% 90%, rgba(252, 211, 77, 0.03) 0%, transparent 40%);
+  background: var(--gradient-page);
 }
 
 .main-container {
@@ -52,7 +49,7 @@ const toggleSidebar = () => {
 
 .app-main {
   flex: 1;
-  padding: 0 32px 32px 32px; /* Adjust padding for floating layout */
+  padding: 0 24px 24px 24px;
   overflow-y: auto;
   overflow-x: hidden;
 }
