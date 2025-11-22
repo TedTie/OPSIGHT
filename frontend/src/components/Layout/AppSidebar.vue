@@ -222,6 +222,26 @@ watch(isSuperAdmin, (newValue) => {
 watch(isAdmin, (newValue) => {
   console.log('isAdmin changed:', newValue)
 }, { immediate: true })
+
+// Sidebar spotlight 跟随鼠标的高亮效果
+const asideRef = ref(null)
+const spotlightStyle = ref({})
+
+const onMouseMove = (e) => {
+  try {
+    const el = asideRef.value?.$el || asideRef.value || e.currentTarget
+    const rect = el.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    spotlightStyle.value = { '--sb-x': `${x}px`, '--sb-y': `${y}px` }
+  } catch (_) {
+    // 静默失败
+  }
+}
+
+const onMouseLeave = () => {
+  spotlightStyle.value = {}
+}
 </script>
 
 <style scoped>
@@ -433,25 +453,3 @@ watch(isAdmin, (newValue) => {
   filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.4));
 }
 </style>
-
-<script setup>
-// Sidebar spotlight 跟随鼠标的高亮效果
-const asideRef = ref(null)
-const spotlightStyle = ref({})
-
-const onMouseMove = (e) => {
-  try {
-    const el = asideRef.value?.$el || asideRef.value || e.currentTarget
-    const rect = el.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    spotlightStyle.value = { '--sb-x': `${x}px`, '--sb-y': `${y}px` }
-  } catch (_) {
-    // 静默失败
-  }
-}
-
-const onMouseLeave = () => {
-  spotlightStyle.value = {}
-}
-</script>
