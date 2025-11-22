@@ -141,23 +141,11 @@ serve(async (req: Request): Promise<Response> => {
         if (updateError) console.error("Update user error (Direct):", updateError)
 
         // 2. If direct update fails (e.g. RLS), try RPC (works if Anon Key is used and RPC is set up)
-        // We need auth_uid for RPC. Fetch it first.
-        const { data: userData, error: fetchError } = await supabase
-          .from("user_account")
-          .select("auth_uid")
-          .eq("username", name)
-          .single()
-
-        if (fetchError || !userData) {
-          console.error("Fetch user for RPC failed:", fetchError)
-          // If we couldn't even find the user, then we can't update.
-          return json({ detail: `更新失败: 无法找到用户 (且直接更新无效)` }, 404)
-        }
-
+        // We use username for RPC now, which is more reliable than auth_uid
         if (updateData.avatar_url) {
-          console.log(`Attempting RPC update for avatar_url: ${updateData.avatar_url}`)
+          console.log(`Attempting RPC update for avatar_url: ${updateData.avatar_url} (User: ${name})`)
           const { error: rpcError } = await supabase.rpc('update_avatar_url', {
-            target_auth_uid: userData.auth_uid,
+            target_username: name,
             new_avatar_url: updateData.avatar_url
           })
 
