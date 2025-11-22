@@ -229,14 +229,13 @@ const isAdmin = computed(() => {
   justify-content: center !important;
 }
 
-/* Hide text content in collapsed state */
-:deep(.el-menu--collapse .el-menu-item span),
-:deep(.el-menu--collapse .el-sub-menu__title span:not(.el-icon)) {
+/* Only hide the title text, not icons */
+:deep(.el-menu--collapse .el-menu-item > span:not(.el-icon)),
+:deep(.el-menu--collapse .el-sub-menu__title > span:not(.el-icon)) {
   display: none !important;
-  visibility: hidden !important;
   width: 0 !important;
   height: 0 !important;
-  opacity: 0 !important;
+  overflow: hidden !important;
 }
 
 :deep(.el-menu--collapse .el-icon) {
@@ -249,7 +248,8 @@ const isAdmin = computed(() => {
 }
 
 /* Ensure collapsed logo only shows icon */
-.app-sidebar.collapsed .logo-text {
+.sidebar-container.collapsed .logo-text,
+:deep(.el-menu--collapse) .logo-text {
   display: none !important;
 }
 </style>
