@@ -38,19 +38,21 @@
   --surface: #ffffff;
   --surface-hover: #f9fafb;
 
-  /* Glass Panel (Crextio Spec) */
-  --glass-bg: rgba(255, 255, 255, 0.78);
-  --glass-border: rgba(255, 255, 255, 0.4);
+  /* Glass Panel (Crextio Spec - Adjusted for visibility) */
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(255, 255, 255, 0.5);
 
-  /* Text Colors (Crextio Spec) */
+  /* Text Colors (Crextio Spec - High Contrast) */
   --text-strong: #1A1F1C;
-  /* Titles */
-  --text-normal: #4B5563;
-  /* Body */
-  --text-muted: #9CA3AF;
-  /* Subtle/Labels */
-  --text-disabled: #d1d5db;
+  /* Titles - Always dark */
+  --text-normal: #374151;
+  /* Body - Darker for better visibility */
+  --text-muted: #6B7280;
+  /* Subtle/Labels - Still readable */
+  --text-disabled: #9CA3AF;
   /* Disabled */
+  --text-inverse: #ffffff;
+  /* White text for dark backgrounds only */
 
   /* Borders */
   --border-color: #e5e7eb;

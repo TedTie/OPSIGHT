@@ -117,7 +117,7 @@ const isAdmin = computed(() => {
 .app-sidebar {
   background: transparent;
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  padding: 20px 0 20px 20px;
+  padding: 16px 0 16px 16px;
   height: 100vh;
   overflow: visible;
 }
@@ -219,23 +219,21 @@ const isAdmin = computed(() => {
   width: 100%;
 }
 
-:deep(.el-menu--collapse .el-menu-item) {
+:deep(.el-menu--collapse .el-menu-item),
+:deep(.el-menu--collapse .el-sub-menu > .el-sub-menu__title) {
   padding: 0 !important;
+  width: 100%;
   text-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-:deep(.el-menu--collapse .el-sub-menu__title) {
-  padding: 0 !important;
-  text-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 :deep(.el-menu--collapse .el-icon) {
-  margin: 0;
+  margin: 0 !important;
+}
+
+:deep(.el-menu--collapse .el-sub-menu__icon-arrow) {
+  display: none;
 }
 </style>
