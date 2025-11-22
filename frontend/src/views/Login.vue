@@ -208,3 +208,133 @@ const handleLogin = async () => {
   height: 48px;
   object-fit: contain;
 }
+
+.login-header h1 {
+  font-size: 36px;
+  font-weight: 700;
+  margin: 0 0 12px 0;
+  
+  /* 渐变文字 */
+  background: var(--gradient-emerald);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  
+  /* 呼吸动画 */
+  animation: breathe 4s ease-in-out infinite;
+  letter-spacing: -0.5px;
+}
+
+@keyframes breathe {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.02);
+  }
+}
+
+.login-header p {
+  color: var(--text-muted);
+  font-size: 15px;
+  margin: 0;
+  font-weight: 500;
+}
+
+.login-form {
+  text-align: left;
+}
+
+/* 增强表单项 */
+:deep(.el-form-item) {
+  margin-bottom: 24px;
+}
+
+.custom-input :deep(.el-input__wrapper) {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+  transition: all 0.3s ease;
+  padding: 4px 12px;
+}
+
+.custom-input :deep(.el-input__wrapper:hover) {
+  border-color: var(--border-color-hover);
+  background: #ffffff;
+}
+
+/* 聚焦时的绿色发光 */
+.custom-input :deep(.el-input__wrapper.is-focus) {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-glow);
+  background: #ffffff;
+}
+
+:deep(.el-input__inner) {
+  color: var(--text-normal);
+  font-weight: 500;
+}
+
+:deep(.el-input__inner::placeholder) {
+  color: var(--text-disabled);
+}
+
+/* Checkbox样式 */
+:deep(.el-checkbox__label) {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.login-button {
+  width: 100%;
+  height: 50px;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  
+  background: var(--gradient-primary);
+  border: none;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+  border-radius: 12px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.login-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(16, 185, 129, 0.35);
+}
+
+.login-button:active {
+  transform: translateY(0);
+}
+
+.login-footer {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-color);
+}
+
+.login-footer p {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+/* 响应式设计 */
+@media (max-width: 480px) {
+  .login-card {
+    padding: 36px 28px;
+  }
+  
+  .login-header h1 {
+    font-size: 30px;
+  }
+  
+  .login-button {
+    height: 46px;
+    font-size: 15px;
+  }
+}
+</style>
