@@ -16,7 +16,7 @@
           <!-- 第二名 -->
           <div v-if="top3[1]" class="podium-item second">
             <div class="avatar-wrap">
-              <el-avatar :size="68" :src="top3[1].avatar" />
+              <el-avatar :size="68" :src="top3[1].avatar_url" />
               <span class="medal medal-silver" aria-hidden="true">🥈</span>
             </div>
             <div class="podium-name" :title="top3[1].name || '—'">{{ top3[1].name || '—' }}</div>
@@ -26,7 +26,7 @@
           <!-- 第一名（居中更大更高） -->
           <div v-if="top3[0]" class="podium-item first">
             <div class="avatar-wrap">
-              <el-avatar :size="88" :src="top3[0].avatar" />
+              <el-avatar :size="88" :src="top3[0].avatar_url" />
               <span class="medal medal-gold" aria-hidden="true">🥇</span>
             </div>
             <div class="podium-name" :title="top3[0].name || '—'">{{ top3[0].name || '—' }}</div>
@@ -36,7 +36,7 @@
           <!-- 第三名 -->
           <div v-if="top3[2]" class="podium-item third">
             <div class="avatar-wrap">
-              <el-avatar :size="68" :src="top3[2].avatar" />
+              <el-avatar :size="68" :src="top3[2].avatar_url" />
               <span class="medal medal-bronze" aria-hidden="true">🥉</span>
             </div>
             <div class="podium-name" :title="top3[2].name || '—'">{{ top3[2].name || '—' }}</div>
@@ -49,7 +49,7 @@
       <div class="rank-list">
         <div v-for="item in others" :key="item.user_id || item.rank" class="rank-row">
           <div class="rank-num">{{ item.rank }}</div>
-          <el-avatar :size="36" :src="item.avatar" />
+          <el-avatar :size="36" :src="item.avatar_url" />
           <div class="row-name" :title="item.name || '—'">{{ item.name || '—' }}</div>
           <div class="row-value">{{ item.formatted_value ?? item.value ?? '—' }}</div>
         </div>
@@ -67,7 +67,7 @@
       <div class="my-rank-row">
         <el-tag size="small">第 {{ currentUserRank.rank }} 名</el-tag>
         <div class="user-cell">
-          <el-avatar :size="28" :src="currentUserRank.avatar" />
+          <el-avatar :size="28" :src="currentUserRank.avatar_url" />
           <span class="name">{{ currentUserRank.name || '—' }}</span>
         </div>
         <span class="value">{{ currentUserRank.formatted_value ?? currentUserRank.value ?? '—' }}</span>

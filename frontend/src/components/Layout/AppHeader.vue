@@ -183,7 +183,7 @@ const mockNotifications = [
 
 // 用户头像
 const userAvatar = computed(() => {
-  return authStore.user?.avatar || ''
+  return authStore.user?.avatar_url || ''
 })
 
 // 用户姓名首字母
