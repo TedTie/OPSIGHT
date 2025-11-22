@@ -129,13 +129,16 @@ serve(async (req: Request): Promise<Response> => {
       console.log(`[Update] Updating user ${name} with data:`, JSON.stringify(updateData))
 
       // 1. Try direct update (works if Service Role Key is used)
-      const { error: updateError } = await supabase
+      const { data: updatedRows, error: updateError } = await supabase
         .from("user_account")
         .update(updateData)
         .eq("username", name)
+        .select()
 
-      if (updateError) {
-        console.error("Update user error (Direct):", updateError)
+      // If error OR no rows updated (RLS silent failure), try fallback
+      if (updateError || !updatedRows || updatedRows.length === 0) {
+        console.log("Direct update failed or returned no rows (RLS?). Trying fallback...")
+        if (updateError) console.error("Update user error (Direct):", updateError)
 
         // 2. If direct update fails (e.g. RLS), try RPC (works if Anon Key is used and RPC is set up)
         // We need auth_uid for RPC. Fetch it first.
@@ -147,10 +150,12 @@ serve(async (req: Request): Promise<Response> => {
 
         if (fetchError || !userData) {
           console.error("Fetch user for RPC failed:", fetchError)
-          return json({ detail: `更新失败: ${updateError.message} (且无法获取用户ID)` }, 500)
+          // If we couldn't even find the user, then we can't update.
+          return json({ detail: `更新失败: 无法找到用户 (且直接更新无效)` }, 404)
         }
 
         if (updateData.avatar_url) {
+          console.log(`Attempting RPC update for avatar_url: ${updateData.avatar_url}`)
           const { error: rpcError } = await supabase.rpc('update_avatar_url', {
             target_auth_uid: userData.auth_uid,
             new_avatar_url: updateData.avatar_url
@@ -160,9 +165,12 @@ serve(async (req: Request): Promise<Response> => {
             console.error("Update user error (RPC):", rpcError)
             return json({ detail: `更新失败 (RPC): ${rpcError.message}` }, 500)
           }
+          console.log("RPC update successful")
         } else {
           // If updating other fields and direct update failed, we are stuck unless we add more RPCs
-          return json({ detail: `更新失败: ${updateError.message}` }, 500)
+          // But for now, just return error if it wasn't an avatar update or if direct update failed for other reasons
+          if (updateError) return json({ detail: `更新失败: ${updateError.message}` }, 500)
+          return json({ detail: `更新失败: 权限不足或用户不存在` }, 403)
         }
       }
 
