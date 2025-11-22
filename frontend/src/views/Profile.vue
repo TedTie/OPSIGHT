@@ -497,7 +497,9 @@ const saveProfile = async () => {
       avatar_url: userForm.avatar_url
     }
     
-    await api.put('/users/me', updateData)
+    await api.put('/users/me', updateData, {
+      params: { u: userForm.username }
+    })
     
     // 更新store中的用户信息
     await authStore.fetchUserInfo()

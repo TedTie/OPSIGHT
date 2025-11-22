@@ -109,6 +109,42 @@ serve(async (req: Request): Promise<Response> => {
     return json(data)
   }
 
+  if (afterFn.startsWith("api/v1/users/me") && req.method === "PUT") {
+    const name = String(u.searchParams.get("u") || "").trim()
+    if (!name) return json({ detail: "未认证" }, 401)
+
+    const body = await parseBody(req)
+    const updateData: any = {}
+
+    // Only allow updating specific fields
+    if (body.avatar_url !== undefined) updateData.avatar_url = body.avatar_url
+    if (body.email !== undefined) updateData.email = body.email
+    if (body.full_name !== undefined) updateData.full_name = body.full_name
+
+    if (Object.keys(updateData).length === 0) {
+      return json({ detail: "No valid fields to update" }, 400)
+    }
+
+    const { error } = await supabase
+      .from("user_account")
+      .update(updateData)
+      .eq("username", name)
+
+    if (error) {
+      console.error("Update user error:", error)
+      return json({ detail: "Update failed" }, 500)
+    }
+
+    // Return updated user info
+    const { data: updatedUser } = await supabase
+      .from("user_account")
+      .select("id,username,role,identity_type,group_id,group_name,is_active,created_at,avatar_url")
+      .eq("username", name)
+      .single()
+
+    return json(updatedUser)
+  }
+
   if (afterFn.startsWith("api/v1/analytics/summary") && req.method === "GET") {
     const idType = (u.searchParams.get("identity_type") || "").toUpperCase()
     const group_id = u.searchParams.get("group_id") || ""
