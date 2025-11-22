@@ -130,13 +130,6 @@
                 <h4>{{ formatDate(report.work_date) }} 日报</h4>
                 <p>{{ report.work_summary || '暂无摘要' }}</p>
                 <div class="report-meta">
-                  <el-tag
-                    v-if="report.mood_score != null"
-                    :type="getEmotionType((report.mood_score || 0) / 10)"
-                    size="small"
-                  >
-                    情感: {{ report.mood_score }}
-                  </el-tag>
                   <span class="report-date">
                     {{ formatDateTime(report.created_at) }}
                   </span>
@@ -330,12 +323,7 @@ const getTaskStatusText = (status) => {
   return statusMap[status] || status
 }
 
-// 获取情感类型
-const getEmotionType = (score) => {
-  if (score >= 0.7) return 'success'
-  if (score >= 0.3) return 'warning'
-  return 'danger'
-}
+
 
 // 查看任务详情
 const viewTask = (task) => {

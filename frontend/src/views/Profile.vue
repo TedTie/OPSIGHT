@@ -183,16 +183,10 @@
             <div class="stat-label">已完成任务</div>
           </div>
         </el-col>
-        <el-col :span="6">
+        <el-col :span="8">
           <div class="stat-item">
             <div class="stat-value">{{ userStats.totalReports }}</div>
             <div class="stat-label">日报总数</div>
-          </div>
-        </el-col>
-        <el-col :span="6">
-          <div class="stat-item">
-            <div class="stat-value">{{ userStats.avgMood || 'N/A' }}</div>
-            <div class="stat-label">平均情绪值</div>
           </div>
         </el-col>
       </el-row>
@@ -250,8 +244,7 @@ const userForm = reactive({
 const userStats = reactive({
   totalTasks: 0,
   completedTasks: 0,
-  totalReports: 0,
-  avgMood: null
+  totalReports: 0
 })
 
 // 头像上传相关
@@ -357,8 +350,7 @@ const fetchUserStats = async () => {
     Object.assign(userStats, {
       totalTasks: taskStats.total || 0,
       completedTasks: taskStats.done || 0,
-      totalReports: reportStats.total_reports || 0,
-      avgMood: reportStats.avg_emotion_score || 0
+      totalReports: reportStats.total_reports || 0
     })
   } catch (error) {
     console.error('获取用户统计失败:', error)
@@ -366,8 +358,7 @@ const fetchUserStats = async () => {
     Object.assign(userStats, {
       totalTasks: 0,
       completedTasks: 0,
-      totalReports: 0,
-      avgMood: 0
+      totalReports: 0
     })
   }
 }

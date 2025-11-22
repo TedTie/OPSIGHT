@@ -86,7 +86,7 @@ const createForm = ref({
   agent_id: null,
   is_active: true,
 })
-const functionTypeOpts = ['emotion_analysis','reflection_generation','task_analysis','report_summary','knowledge_qa','custom']
+const functionTypeOpts = ['reflection_generation','task_analysis','report_summary','knowledge_qa','custom']
 
 const fetchAgents = async () => {
   try {

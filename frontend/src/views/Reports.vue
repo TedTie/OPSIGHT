@@ -1513,7 +1513,6 @@ const submitReport = async () => {
         // 始终用系统自动生成的卡片汇总，清除手动输入
         task_progress: reportForm.completed_tasks || '',
         work_summary: reportForm.summary || '',
-        mood_score: 0,
         efficiency_score: efficiencyScore,
         call_count: Number.isFinite(Number(reportForm.call_count)) ? Number(reportForm.call_count) : 0,
         call_duration: Number.isFinite(Number(reportForm.call_duration)) ? Number(reportForm.call_duration) : 0,

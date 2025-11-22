@@ -636,8 +636,8 @@ serve(async (req: Request): Promise<Response> => {
     const gid = u.searchParams.get("group_id") || ""
     const uid = u.searchParams.get("user_id") || ""
     const idType = (u.searchParams.get("identity_type") || "").toUpperCase()
-    const extended = "id,work_date,title,content,work_hours,task_progress,work_summary,mood_score,efficiency_score,call_count,call_duration,achievements,challenges,tomorrow_plan,ai_analysis,actual_amount,new_sign_amount,referral_amount,referral_count,renewal_amount,upgrade_amount,renewal_count,upgrade_count,created_at,updated_at,created_by"
-    const base = "id,work_date,title,content,work_hours,task_progress,work_summary,mood_score,efficiency_score,call_count,call_duration,achievements,challenges,tomorrow_plan,ai_analysis,created_at,updated_at,created_by"
+    const extended = "id,work_date,title,content,work_hours,task_progress,work_summary,efficiency_score,call_count,call_duration,achievements,challenges,tomorrow_plan,ai_analysis,actual_amount,new_sign_amount,referral_amount,referral_count,renewal_amount,upgrade_amount,renewal_count,upgrade_count,created_at,updated_at,created_by"
+    const base = "id,work_date,title,content,work_hours,task_progress,work_summary,efficiency_score,call_count,call_duration,achievements,challenges,tomorrow_plan,ai_analysis,created_at,updated_at,created_by"
     let rq = supabase.from("daily_reports").select(extended)
     if (start) rq = rq.gte("work_date", start)
     if (end) rq = rq.lte("work_date", end)
@@ -1282,17 +1282,10 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if (afterFn.startsWith("api/v1/reports/stats/summary") && req.method === "GET") {
-    const { data, error } = await supabase.from("daily_reports").select("mood_score")
+    const { data, error } = await supabase.from("daily_reports").select("id")
     if (error) return json({ detail: error.message }, 500)
-    const arr = (data || []) as any[]
-    const total_reports = arr.length
-    let avg_emotion_score = 0
-    if (total_reports) {
-      const vals = arr.map(r => Number((r as any).mood_score || 0)).filter(v => !Number.isNaN(v))
-      const sum = vals.reduce((a, b) => a + b, 0)
-      avg_emotion_score = vals.length ? Math.round(sum / vals.length) : 0
-    }
-    return json({ total_reports, avg_emotion_score })
+    const total_reports = (data || []).length
+    return json({ total_reports })
   }
 
   if (afterFn.startsWith("api/v1/goals/monthly") && req.method === "POST") {
