@@ -140,8 +140,10 @@ async function fetchRankingData() {
       suppressErrorMessage: true
     })
     const list = Array.isArray(data?.top_10) ? data.top_10 : []
+    console.log('[RankingList] Fetched top10:', list)
     top10.value = list
     currentUserRank.value = data?.current_user_rank || null
+    console.log('[RankingList] Fetched currentUserRank:', currentUserRank.value)
   } catch (err) {
     // 如果后端尚未提供该接口或返回错误，给出温和提示
     ElMessage.warning('获取排行榜失败')
