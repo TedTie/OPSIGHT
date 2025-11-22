@@ -374,6 +374,12 @@ const fetchUserStats = async () => {
 
 // 用户组信息直接从authStore.user.group_name获取，无需单独API调用
 
+// 初始化
+onMounted(() => {
+  initUserForm()
+  fetchUserStats()
+})
+
 // 切换编辑模式
 const toggleEdit = () => {
   if (isEditing.value) {
