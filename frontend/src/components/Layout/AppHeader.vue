@@ -63,7 +63,7 @@
       <!-- User Menu -->
       <el-dropdown @command="handleUserCommand">
         <div class="user-info">
-          <el-avatar :size="36" :src="userAvatar" class="user-avatar">
+          <el-avatar :size="32" :src="userAvatar" class="user-avatar">
             {{ userInitials }}
           </el-avatar>
           <div class="user-text hidden-mobile">
@@ -212,13 +212,20 @@ onMounted(() => {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 12px;
+}
+
+.notification-badge {
+  line-height: 1;
 }
 
 .header-button {
-  font-size: 22px;
+  width: 36px !important;
+  height: 36px !important;
+  padding: 8px !important;
+  min-height: unset !important;
+  font-size: 20px;
   color: var(--text-muted);
-  padding: 8px;
   border-radius: var(--radius-md);
 }
 
@@ -230,7 +237,7 @@ onMounted(() => {
 .user-info {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 24px;
@@ -243,6 +250,8 @@ onMounted(() => {
 }
 
 .user-avatar {
+  width: 32px !important;
+  height: 32px !important;
   border: 2px solid #ffffff;
   box-shadow: var(--shadow-sm);
 }
@@ -254,7 +263,7 @@ onMounted(() => {
 }
 
 .welcome-text {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-muted);
 }
 

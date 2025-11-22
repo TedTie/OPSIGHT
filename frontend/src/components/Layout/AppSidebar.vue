@@ -214,42 +214,43 @@ const isAdmin = computed(() => {
   color: var(--color-primary);
 }
 
-/* Collapsed State - Center Content */
+/* Collapsed State - Let Element Plus handle it naturally */
 :deep(.el-menu--collapse) {
   width: 100%;
 }
 
-:deep(.el-menu--collapse .el-menu-item),
+/* Center the menu items */
+:deep(.el-menu--collapse .el-menu-item) {
+  padding: 0 !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+}
+
 :deep(.el-menu--collapse .el-sub-menu > .el-sub-menu__title) {
   padding: 0 !important;
-  width: 100%;
-  text-align: center;
   display: flex !important;
-  align-items: center !important;
   justify-content: center !important;
+  align-items: center !important;
 }
 
-/* Only hide the title text, not icons */
-:deep(.el-menu--collapse .el-menu-item > span:not(.el-icon)),
-:deep(.el-menu--collapse .el-sub-menu__title > span:not(.el-icon)) {
-  display: none !important;
-  width: 0 !important;
-  height: 0 !important;
-  overflow: hidden !important;
-}
-
+/* Ensure icons are visible and properly sized */
 :deep(.el-menu--collapse .el-icon) {
   margin: 0 !important;
   font-size: 22px !important;
 }
 
+/* Hide submenu arrow in collapsed state */
 :deep(.el-menu--collapse .el-sub-menu__icon-arrow) {
   display: none !important;
 }
 
-/* Ensure collapsed logo only shows icon */
-.sidebar-container.collapsed .logo-text,
-:deep(.el-menu--collapse) .logo-text {
+/* Hide logo text when collapsed */
+.logo-text {
+  transition: opacity 0.2s;
+}
+
+:deep(.el-menu--collapse) ~ .sidebar-logo .logo-text {
   display: none !important;
 }
 </style>
