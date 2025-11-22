@@ -1,6 +1,6 @@
 <template>
   <el-aside
-    :width="collapsed ? '80px' : '260px'"
+    :width="collapsed ? '64px' : '240px'"
     class="app-sidebar"
     ref="asideRef"
   >
@@ -229,11 +229,27 @@ const isAdmin = computed(() => {
   justify-content: center !important;
 }
 
+/* Hide text content in collapsed state */
+:deep(.el-menu--collapse .el-menu-item span),
+:deep(.el-menu--collapse .el-sub-menu__title span:not(.el-icon)) {
+  display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+}
+
 :deep(.el-menu--collapse .el-icon) {
   margin: 0 !important;
+  font-size: 22px !important;
 }
 
 :deep(.el-menu--collapse .el-sub-menu__icon-arrow) {
-  display: none;
+  display: none !important;
+}
+
+/* Ensure collapsed logo only shows icon */
+.app-sidebar.collapsed .logo-text {
+  display: none !important;
 }
 </style>

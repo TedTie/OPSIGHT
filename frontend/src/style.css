@@ -23,17 +23,17 @@
   --color-error: #ef4444;
   --color-info: #3b82f6;
 
-  /* Gradients */
+  /* Gradients - Enhanced Saturation */
   --gradient-primary: linear-gradient(135deg, #00C589 0%, #00AF75 100%);
-  --gradient-page: linear-gradient(180deg, #F9FFFC 0%, #EEF7F4 100%);
+  --gradient-page: linear-gradient(135deg, #E8F8F3 0%, #D4F1E8 50%, #C8EFE0 100%);
   --gradient-soft: linear-gradient(135deg, #DFFBF1 0%, #ffffff 100%);
 
-  /* Backgrounds */
-  --bg-page: #F9FFFC;
-  /* Crextio Page Background (will be used with gradient) */
+  /* Backgrounds - More Saturated */
+  --bg-page: #E8F8F3;
+  /* More saturated mint background */
   --bg-elevated: #ffffff;
   /* Pure White */
-  --bg-soft: #F9FFFC;
+  --bg-soft: #F0FAF7;
   /* Light Mint */
   --surface: #ffffff;
   --surface-hover: #f9fafb;
@@ -96,11 +96,27 @@ body {
   height: 100%;
   font-family: var(--font-family);
   font-size: var(--font-size-base);
-  background: var(--gradient-page);
+  background: linear-gradient(135deg, #E8F8F3 0%, #D4F1E8 25%, #C8EFE0 50%, #D4F1E8 75%, #E8F8F3 100%);
+  background-size: 400% 400%;
+  animation: gradientShift 15s ease infinite;
   color: var(--text-normal);
   -webkit-font-smoothing: antialiased;
   margin: 0;
   padding: 0;
+}
+
+@keyframes gradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
 #app {

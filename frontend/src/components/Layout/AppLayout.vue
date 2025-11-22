@@ -36,7 +36,7 @@ const toggleSidebar = () => {
 .app-layout {
   height: 100vh;
   overflow: hidden;
-  background: var(--gradient-page);
+  background: transparent;
 }
 
 .main-container {
