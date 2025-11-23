@@ -68,7 +68,42 @@ async function verifyToken(token: string) {
   }
 }
 
+async function buildTaskFilterByRole(supabase: any, userId: string, role: string, groupId: number | null) {
+  let query = supabase.from("tasks")
 
+  if (role === 'user') {
+    const filters: string[] = []
+    filters.push(`assignment_type.eq.all`)
+    if (groupId) {
+      filters.push(`and(assignment_type.eq.group,assigned_group_ids.cs.{${groupId}})`)
+    }
+    filters.push(`and(assignment_type.eq.user,assigned_user_ids.cs.{${userId}})`)
+    filters.push(`assignee_id.eq.${userId}`)
+    query = query.or(filters.join(','))
+  } else if (role === 'admin') {
+    if (groupId) {
+      const { data: groupMembers } = await supabase
+        .from("user_account")
+        .select("id")
+        .eq("group_id", groupId)
+
+      const memberIds = (groupMembers || []).map((m: any) => m.id)
+
+      const filters: string[] = []
+      filters.push(`assignment_type.eq.all`)
+      filters.push(`and(assignment_type.eq.group,assigned_group_ids.cs.{${groupId}})`)
+      if (memberIds.length > 0) {
+        filters.push(`and(assignment_type.eq.user,assigned_user_ids.ov.{${memberIds.join(',')}})`)
+      }
+      query = query.or(filters.join(','))
+    } else {
+      query = query.eq("assignment_type", "all")
+    }
+  }
+  // super_admin: no filtering
+
+  return query
+}
 
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
@@ -1327,12 +1362,36 @@ serve(async (req: Request): Promise<Response> => {
     return json({ answer })
   }
   if (afterFn === "api/v1/tasks" && req.method === "GET") {
+    // Get current user
+    const authHeader = req.headers.get("Authorization")
+    if (!authHeader) return json({ detail: "Unauthorized" }, 401)
+    const token = authHeader.replace("Bearer ", "")
+    const { data: { user } } = await verifyToken(token)
+    if (!user) return json({ detail: "Unauthorized" }, 401)
+
+    // Get user role and group
+    const { data: userAccount } = await supabase
+      .from("user_account")
+      .select("role, group_id")
+      .eq("id", user.id)
+      .single()
+
+    if (!userAccount) return json({ detail: "User not found" }, 404)
+
+    const { role, group_id } = userAccount as any
+
+    // Build query with role-based filtering
+    let query = await buildTaskFilterByRole(supabase, user.id, role, group_id)
+    query = query.select("*", { count: "exact" })
+
+    // Apply pagination
     const page = Number(u.searchParams.get("page") || "1")
     const size = Number(u.searchParams.get("size") || "10")
     const start = (page - 1) * size
-    const { data, error } = await supabase.from("tasks").select("*").range(start, start + size - 1)
+
+    const { data, error, count } = await query.range(start, start + size - 1)
     if (error) return json({ detail: error.message }, 500)
-    const { count } = await supabase.from("tasks").select("id", { count: "exact", head: true })
+
     return json({ items: data || [], total: count || 0, page, size })
   }
 
@@ -1527,7 +1586,23 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if (afterFn === "api/v1/tasks/stats" && req.method === "GET") {
-    const { data, error } = await supabase.from("tasks").select("status")
+    const authHeader = req.headers.get("Authorization")
+    if (!authHeader) return json({ detail: "Unauthorized" }, 401)
+    const token = authHeader.replace("Bearer ", "")
+    const { data: { user } } = await verifyToken(token)
+    if (!user) return json({ detail: "Unauthorized" }, 401)
+
+    const { data: userAccount } = await supabase
+      .from("user_account")
+      .select("role, group_id")
+      .eq("id", user.id)
+      .single()
+    if (!userAccount) return json({ detail: "User not found" }, 404)
+    const { role, group_id } = userAccount as any
+
+    let query = await buildTaskFilterByRole(supabase, user.id, role, group_id)
+    query = query.select("status")
+    const { data, error } = await query
     if (error) return json({ detail: error.message }, 500)
     const total = (data || []).length
     const byStatus: Record<string, number> = {}
@@ -1539,7 +1614,23 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if (afterFn === "api/v1/tasks/stats/summary" && req.method === "GET") {
-    const { data, error } = await supabase.from("tasks").select("status")
+    const authHeader = req.headers.get("Authorization")
+    if (!authHeader) return json({ detail: "Unauthorized" }, 401)
+    const token = authHeader.replace("Bearer ", "")
+    const { data: { user } } = await verifyToken(token)
+    if (!user) return json({ detail: "Unauthorized" }, 401)
+
+    const { data: userAccount } = await supabase
+      .from("user_account")
+      .select("role, group_id")
+      .eq("id", user.id)
+      .single()
+    if (!userAccount) return json({ detail: "User not found" }, 404)
+    const { role, group_id } = userAccount as any
+
+    let query = await buildTaskFilterByRole(supabase, user.id, role, group_id)
+    query = query.select("status")
+    const { data, error } = await query
     if (error) return json({ detail: error.message }, 500)
     const total = (data || []).length
     const completed = (data || []).filter(t => (t as any).status === "completed").length
@@ -2143,9 +2234,24 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if (afterFn.startsWith("api/v1/analytics/stats") && req.method === "GET") {
+    const authHeader = req.headers.get("Authorization")
+    if (!authHeader) return json({ detail: "Unauthorized" }, 401)
+    const token = authHeader.replace("Bearer ", "")
+    const { data: { user } } = await verifyToken(token)
+    if (!user) return json({ detail: "Unauthorized" }, 401)
+
+    const { data: userAccount } = await supabase
+      .from("user_account")
+      .select("role, group_id")
+      .eq("id", user.id)
+      .single()
+    if (!userAccount) return json({ detail: "User not found" }, 404)
+    const { role, group_id } = userAccount as any
+
     const start = u.searchParams.get("start_date") || ""
     const end = u.searchParams.get("end_date") || ""
-    let q = supabase.from("tasks").select("status,created_at")
+    let q = await buildTaskFilterByRole(supabase, user.id, role, group_id)
+    q = q.select("status,created_at")
     if (start) q = q.gte("created_at", start)
     if (end) q = q.lte("created_at", end + "T23:59:59")
 
@@ -2166,9 +2272,24 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if (afterFn.startsWith("api/v1/analytics/charts") && req.method === "GET") {
+    const authHeader = req.headers.get("Authorization")
+    if (!authHeader) return json({ detail: "Unauthorized" }, 401)
+    const token = authHeader.replace("Bearer ", "")
+    const { data: { user } } = await verifyToken(token)
+    if (!user) return json({ detail: "Unauthorized" }, 401)
+
+    const { data: userAccount } = await supabase
+      .from("user_account")
+      .select("role, group_id")
+      .eq("id", user.id)
+      .single()
+    if (!userAccount) return json({ detail: "User not found" }, 404)
+    const { role, group_id } = userAccount as any
+
     const start = u.searchParams.get("start_date") || ""
     const end = u.searchParams.get("end_date") || ""
-    let q = supabase.from("tasks").select("status,created_at")
+    let q = await buildTaskFilterByRole(supabase, user.id, role, group_id)
+    q = q.select("status,created_at")
     if (start) q = q.gte("created_at", start)
     if (end) q = q.lte("created_at", end + "T23:59:59")
 
