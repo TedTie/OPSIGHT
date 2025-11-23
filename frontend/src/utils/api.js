@@ -42,7 +42,11 @@ api.interceptors.request.use(
       fullURL: `${config.baseURL}${config.url}`,
       data: config.data
     })
-    // 简化版不需要token，使用cookie认证
+    // 从 localStorage 获取 token 并添加到 header
+    const token = localStorage.getItem('token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
     return config
   },
   (error) => {
@@ -60,7 +64,7 @@ api.interceptors.response.use(
     console.error('API Error:', error)
     const { response, config } = error
     const suppress = !!(config && (config.suppressErrorMessage || config.suppressError))
-    
+
     if (response) {
       switch (response.status) {
         case 401:
@@ -131,7 +135,7 @@ api.interceptors.response.use(
         config: error.config,
         stack: error.stack
       })
-      
+
       if (!suppress) {
         if (error.code === 'ECONNREFUSED' || error.message.includes('ECONNREFUSED')) {
           ElMessage.error('无法连接到服务器，请确认后端服务是否启动')

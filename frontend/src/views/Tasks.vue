@@ -303,7 +303,7 @@
               v-model="taskForm.target_amount"
               :min="0"
               :precision="2"
-              placeholder="请输入目标金额"
+              placeholder="请输入每人目标金额"
               style="width: 100%"
             />
           </el-form-item>
@@ -315,7 +315,7 @@
             <el-input-number
               v-model="taskForm.target_quantity"
               :min="1"
-              placeholder="请输入目标数量"
+              placeholder="请输入每人目标数量"
               style="width: 100%"
             />
           </el-form-item>
@@ -327,7 +327,7 @@
             <el-input-number
               v-model="taskForm.jielong_target_count"
               :min="1"
-              placeholder="请输入目标接龙数量"
+              placeholder="请输入每人目标接龙数量"
               style="width: 100%"
             />
           </el-form-item>
@@ -527,13 +527,13 @@
           <template v-if="currentTask.task_type === 'amount'">
             <!-- 我的 / 指定用户 视角 -->
             <template v-if="amountRecordsScope === 'mine' || selectedUserId">
-              <el-descriptions-item label="目标金额">
+              <el-descriptions-item label="个人目标金额">
                 {{ formatMoney(coalesce(currentTask.personal_target_amount, currentTask.target_amount, 0)) }}
               </el-descriptions-item>
-              <el-descriptions-item label="当前金额">
+              <el-descriptions-item label="个人当前金额">
                 {{ formatMoney(coalesce(currentTask.personal_current_amount, 0)) }}
               </el-descriptions-item>
-              <el-descriptions-item label="完成进度" :span="2">
+              <el-descriptions-item label="个人完成进度" :span="2">
                 <el-progress 
                   :percentage="Math.round((currentTask.personal_progress || 0) * 100)"
                   :color="getProgressColor(currentTask.personal_progress || 0)"
@@ -542,13 +542,13 @@
             </template>
             <!-- 全部视角 -->
             <template v-else>
-              <el-descriptions-item label="目标金额">
+              <el-descriptions-item label="汇总目标金额">
                 {{ formatMoney(currentTask.aggregate_target_amount || 0) }}
               </el-descriptions-item>
-              <el-descriptions-item label="当前金额">
+              <el-descriptions-item label="汇总当前金额">
                 {{ formatMoney(currentTask.current_amount || 0) }}
               </el-descriptions-item>
-              <el-descriptions-item label="完成进度" :span="2">
+              <el-descriptions-item label="汇总完成进度" :span="2">
                 <el-progress 
                   :percentage="Math.round((currentTask.aggregate_progress || 0) * 100)"
                   :color="getProgressColor(currentTask.aggregate_progress || 0)"
@@ -560,13 +560,13 @@
           <template v-if="currentTask.task_type === 'quantity'">
             <!-- 我的 / 指定用户 视角 -->
             <template v-if="quantityRecordsScope === 'mine' || selectedUserId">
-              <el-descriptions-item label="目标数量">
+              <el-descriptions-item label="个人目标数量">
                 {{ coalesce(currentTask.personal_target_quantity, currentTask.target_quantity, 0) }}
               </el-descriptions-item>
-              <el-descriptions-item label="当前数量">
+              <el-descriptions-item label="个人当前数量">
                 {{ coalesce(currentTask.personal_current_quantity, 0) }}
               </el-descriptions-item>
-              <el-descriptions-item label="完成进度" :span="2">
+              <el-descriptions-item label="个人完成进度" :span="2">
                 <el-progress 
                   :percentage="Math.round((currentTask.personal_progress || 0) * 100)"
                   :color="getProgressColor(currentTask.personal_progress || 0)"
@@ -575,13 +575,13 @@
             </template>
             <!-- 全部视角 -->
             <template v-else>
-              <el-descriptions-item label="目标数量">
+              <el-descriptions-item label="汇总目标数量">
                 {{ currentTask.aggregate_target_quantity || 0 }}
               </el-descriptions-item>
-              <el-descriptions-item label="当前数量">
+              <el-descriptions-item label="汇总当前数量">
                 {{ currentTask.current_quantity || 0 }}
               </el-descriptions-item>
-              <el-descriptions-item label="完成进度" :span="2">
+              <el-descriptions-item label="汇总完成进度" :span="2">
                 <el-progress 
                   :percentage="Math.round((currentTask.aggregate_progress || 0) * 100)"
                   :color="getProgressColor(currentTask.aggregate_progress || 0)"
@@ -593,13 +593,13 @@
           <template v-if="currentTask.task_type === 'jielong'">
             <!-- 我的 / 指定用户 视角 -->
             <template v-if="jielongEntriesScope === 'mine' || selectedUserId">
-              <el-descriptions-item label="目标接龙数量">
+              <el-descriptions-item label="个人目标接龙">
                 {{ coalesce(currentTask.personal_jielong_target_count, currentTask.jielong_target_count, 0) }}
               </el-descriptions-item>
-              <el-descriptions-item label="当前接龙数量">
+              <el-descriptions-item label="个人当前接龙">
                 {{ coalesce(currentTask.personal_jielong_current_count, 0) }}
               </el-descriptions-item>
-              <el-descriptions-item label="接龙进度" :span="2">
+              <el-descriptions-item label="个人接龙进度" :span="2">
                 <el-progress 
                   :percentage="Math.round((currentTask.personal_jielong_progress || 0) * 100)"
                   :color="getProgressColor(currentTask.personal_jielong_progress || 0)"
@@ -608,13 +608,13 @@
             </template>
             <!-- 全部视角 -->
             <template v-else>
-              <el-descriptions-item label="目标接龙数量">
+              <el-descriptions-item label="汇总目标接龙">
                 {{ currentTask.aggregate_jielong_target_count || 0 }}
               </el-descriptions-item>
-              <el-descriptions-item label="当前接龙数量">
+              <el-descriptions-item label="汇总当前接龙">
                 {{ currentTask.jielong_current_count || 0 }}
               </el-descriptions-item>
-              <el-descriptions-item label="接龙进度" :span="2">
+              <el-descriptions-item label="汇总接龙进度" :span="2">
                 <el-progress 
                   :percentage="Math.round((currentTask.aggregate_jielong_progress || 0) * 100)"
                   :color="getProgressColor(currentTask.aggregate_jielong_progress || 0)"
