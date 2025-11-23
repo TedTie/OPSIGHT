@@ -18,7 +18,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (!user.value) return false
     return user.value.role === 'super_admin'
   })
-  
+
   // 兼容性计算属性（保持向后兼容）
   const isUser = computed(() => {
     if (!user.value) return false
@@ -31,16 +31,21 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const response = await api.post('/auth/login', credentials)
       const { user: userData } = response.data
-      
+
       user.value = userData
-      
+
       // 保存到本地存储
       localStorage.setItem('user', JSON.stringify(userData))
-      // 设置token标识（用于路由守卫）
-      localStorage.setItem('token', 'authenticated')
-      
+      // 设置token
+      if (response.data.token) {
+        localStorage.setItem('token', response.data.token)
+      } else {
+        // Fallback for legacy behavior or if token is missing (should not happen with new backend)
+        localStorage.setItem('token', 'authenticated')
+      }
+
       ElMessage.success('登录成功')
-      try { await fetchUserInfo() } catch {}
+      try { await fetchUserInfo() } catch { }
       return true
     } catch (error) {
       ElMessage.error(error.response?.data?.detail || '登录失败')
@@ -59,11 +64,11 @@ export const useAuthStore = defineStore('auth', () => {
     } finally {
       // 清除状态
       user.value = null
-      
+
       // 清除本地存储
       localStorage.removeItem('user')
       localStorage.removeItem('token')
-      
+
       ElMessage.success('已退出登录')
     }
   }
@@ -91,9 +96,9 @@ export const useAuthStore = defineStore('auth', () => {
     // 从localStorage恢复用户状态
     const savedUser = localStorage.getItem('user')
     const savedToken = localStorage.getItem('token')
-    
+
     console.log('initAuth called:', { savedUser, savedToken })
-    
+
     if (savedUser && savedToken) {
       try {
         const userData = JSON.parse(savedUser)
@@ -123,7 +128,7 @@ export const useAuthStore = defineStore('auth', () => {
   // 检查权限
   const hasPermission = (permission) => {
     if (!user.value) return false
-    
+
     switch (permission) {
       case 'admin':
         return user.value.role === 'admin' || user.value.role === 'super_admin'
@@ -135,14 +140,14 @@ export const useAuthStore = defineStore('auth', () => {
         return true
     }
   }
-  
+
   // 根据身份检查权限
   const hasIdentityPermission = (identity) => {
     if (!user.value) return false
     if (user.value.role === 'super_admin') return true
     return user.value.identity_type === identity
   }
-  
+
   // 检查组权限
   const hasGroupPermission = (groupName) => {
     if (!user.value) return false
@@ -153,7 +158,7 @@ export const useAuthStore = defineStore('auth', () => {
   // 统一权限检查方法
   const can = (action) => {
     if (!user.value) return false
-    
+
     const permissions = {
       // 任务相关权限
       'tasks:create': isAdmin.value || isSuperAdmin.value,
@@ -163,7 +168,7 @@ export const useAuthStore = defineStore('auth', () => {
       'tasks:assign': isAdmin.value || isSuperAdmin.value,
       'tasks:manage:all': isSuperAdmin.value,
       'tasks:manage:group': isAdmin.value || isSuperAdmin.value,
-      
+
       // 日报相关权限
       'reports:create': true,
       'reports:view:all': isAdmin.value || isSuperAdmin.value,
@@ -171,27 +176,27 @@ export const useAuthStore = defineStore('auth', () => {
       'reports:view:self': true,
       'reports:manage:all': isSuperAdmin.value,
       'reports:manage:group': isAdmin.value || isSuperAdmin.value,
-      
+
       // 分析相关权限
       'analytics:view:all': isSuperAdmin.value,
       'analytics:view:group': isAdmin.value || isSuperAdmin.value,
       'analytics:view:self': true,
-      
+
       // 用户管理权限
       'users:manage': isSuperAdmin.value,
       'users:view:all': isSuperAdmin.value,
       'users:view:group': isAdmin.value || isSuperAdmin.value
     }
-    
+
     return permissions[action] || false
   }
 
   // 获取允许的作用域
   const allowedScopes = (action) => {
     if (!user.value) return []
-    
+
     const scopes = []
-    
+
     // 根据权限级别确定可用作用域
     if (isSuperAdmin.value) {
       scopes.push('all', 'group', 'identity', 'user', 'self')
@@ -200,21 +205,21 @@ export const useAuthStore = defineStore('auth', () => {
     } else {
       scopes.push('self')
     }
-    
+
     // 根据具体操作进一步限制
     if (action.includes('create') || action.includes('assign')) {
       if (!isAdmin.value && !isSuperAdmin.value) {
         return ['self']
       }
     }
-    
+
     return scopes
   }
 
   // 获取用户默认首页
   const getDefaultHome = () => {
     if (!user.value) return '/login'
-    
+
     if (isSuperAdmin.value) return '/dashboard'
     if (isAdmin.value) return '/dashboard'
     return '/tasks'
@@ -224,13 +229,13 @@ export const useAuthStore = defineStore('auth', () => {
     // 状态
     user,
     loading,
-    
+
     // 计算属性
     isAuthenticated,
     isAdmin,
     isSuperAdmin,
     isUser,
-    
+
     // 方法
     login,
     logout,
@@ -239,7 +244,7 @@ export const useAuthStore = defineStore('auth', () => {
     hasPermission,
     hasIdentityPermission,
     hasGroupPermission,
-    
+
     // 新增权限方法
     can,
     allowedScopes,

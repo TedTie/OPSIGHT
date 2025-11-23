@@ -28,6 +28,48 @@ const supabaseEnvUrl = Deno.env.get("SUPABASE_URL") ?? ""
 const supabaseEnvKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? (Deno.env.get("SERVICE_ROLE_KEY") ?? (Deno.env.get("SUPABASE_ANON_KEY") ?? ""))
 console.log("[Init] Supabase Key used:", supabaseEnvKey ? (supabaseEnvKey.slice(0, 5) + "...") : "None")
 
+const JWT_SECRET = "killerapp-secret-key-change-me-123456"
+
+async function signToken(user: any) {
+  const payload = {
+    sub: user.id,
+    username: user.username,
+    role: user.role,
+    exp: Date.now() + 7 * 24 * 60 * 60 * 1000
+  }
+  const data = new TextEncoder().encode(JSON.stringify(payload))
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(JWT_SECRET),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  )
+  const signature = await crypto.subtle.sign("HMAC", key, data)
+  const b64Data = btoa(String.fromCharCode(...data))
+  const b64Sig = btoa(String.fromCharCode(...new Uint8Array(signature)))
+  return `${b64Data}.${b64Sig}`
+}
+
+async function verifyToken(token: string) {
+  try {
+    const [b64Data, b64Sig] = token.split(".")
+    if (!b64Data || !b64Sig) return { data: { user: null }, error: { message: "Invalid token format" } }
+    const data = new Uint8Array(atob(b64Data).split("").map(c => c.charCodeAt(0)))
+    const key = await crypto.subtle.importKey(
+      "raw", new TextEncoder().encode(JWT_SECRET),
+      { name: "HMAC", hash: "SHA-256" }, false, ["verify"]
+    )
+    const signature = new Uint8Array(atob(b64Sig).split("").map(c => c.charCodeAt(0)))
+    const valid = await crypto.subtle.verify("HMAC", key, signature, data)
+    if (!valid) return { data: { user: null }, error: { message: "Invalid signature" } }
+    const payload = JSON.parse(new TextDecoder().decode(data))
+    if (payload.exp < Date.now()) return { data: { user: null }, error: { message: "Token expired" } }
+    return { data: { user: { id: payload.sub, ...payload } }, error: null }
+  } catch (e) {
+    return { data: { user: null }, error: { message: "Token verification failed" } }
+  }
+}
+
+
+
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
   const u = new URL(req.url)
@@ -83,14 +125,19 @@ serve(async (req: Request): Promise<Response> => {
     const username = String(body.username || "").trim()
     const password = String(body.password || "").trim()
     if (username.toLowerCase() === "admin" && password.length > 0) {
-      return json({ user: { id: 1, username: "admin", role: "super_admin" } })
+      const adminUser = { id: 1, username: "admin", role: "super_admin" }
+      const token = await signToken(adminUser)
+      return json({ user: adminUser, token })
     }
     const { data, error } = await supabase.from("user_account").select("id,username,role,is_active,hashed_password,avatar_url").eq("username", username).single()
     if (error || !data) return json({ detail: "用户名不存在或账户已被禁用" }, 401)
     if (!(data as any).is_active) return json({ detail: "用户名不存在或账户已被禁用" }, 401)
     const ok = (data as any).hashed_password ? bcrypt.compareSync(password, String((data as any).hashed_password)) : false
     if (!ok) return json({ detail: "用户名不存在或账户已被禁用" }, 401)
-    return json({ user: { id: (data as any).id, username: (data as any).username, role: (data as any).role, avatar_url: (data as any).avatar_url } })
+
+    const userObj = { id: (data as any).id, username: (data as any).username, role: (data as any).role, avatar_url: (data as any).avatar_url }
+    const token = await signToken(userObj)
+    return json({ user: userObj, token })
   }
 
   if ((afterFn.startsWith("auth/logout") || afterFn.startsWith("api/v1/auth/logout")) && req.method === "POST") {
@@ -945,7 +992,7 @@ serve(async (req: Request): Promise<Response> => {
     const authHeader = req.headers.get("Authorization")
     if (!authHeader) return json({ detail: "Unauthorized" }, 401)
     const token = authHeader.replace("Bearer ", "")
-    const { data: { user } } = await supabase.auth.getUser(token)
+    const { data: { user } } = await verifyToken(token)
     if (!user) return json({ detail: "Unauthorized" }, 401)
 
     const { data: tdata, error: terr } = await supabase.from("tasks").select("task_type,current_amount,current_quantity").eq("id", tid).single()
@@ -1002,7 +1049,7 @@ serve(async (req: Request): Promise<Response> => {
     const authHeader = req.headers.get("Authorization")
     if (!authHeader) return json({ detail: "Unauthorized" }, 401)
     const token = authHeader.replace("Bearer ", "")
-    const { data: { user } } = await supabase.auth.getUser(token)
+    const { data: { user } } = await verifyToken(token)
     if (!user) return json({ detail: "Unauthorized" }, 401)
 
     // Upsert completion record
@@ -1292,7 +1339,7 @@ serve(async (req: Request): Promise<Response> => {
     const authHeader = req.headers.get("Authorization")
     if (authHeader) {
       const token = authHeader.replace("Bearer ", "")
-      const { data: { user } } = await supabase.auth.getUser(token)
+      const { data: { user } } = await verifyToken(token)
       if (user) {
         if (!payload.assignee_id) payload.assignee_id = user.id
         // tasks table usually doesn't have created_by, but if it does:
@@ -1341,7 +1388,7 @@ serve(async (req: Request): Promise<Response> => {
     let currentUserId = ""
     if (authHeader) {
       const token = authHeader.replace("Bearer ", "")
-      const { data: { user } } = await supabase.auth.getUser(token)
+      const { data: { user } } = await verifyToken(token)
       if (user) currentUserId = user.id
     }
 
@@ -1538,7 +1585,7 @@ serve(async (req: Request): Promise<Response> => {
     let currentUserId = ""
     if (authHeader) {
       const token = authHeader.replace("Bearer ", "")
-      const { data: { user } } = await supabase.auth.getUser(token)
+      const { data: { user } } = await verifyToken(token)
       if (user) currentUserId = user.id
     }
 
@@ -1572,7 +1619,7 @@ serve(async (req: Request): Promise<Response> => {
     const authHeader = req.headers.get("Authorization")
     if (!authHeader) return json({ detail: "Unauthorized" }, 401)
     const token = authHeader.replace("Bearer ", "")
-    const { data: { user } } = await supabase.auth.getUser(token)
+    const { data: { user } } = await verifyToken(token)
     if (!user) return json({ detail: "Unauthorized" }, 401)
 
     // Get next sequence
@@ -1618,7 +1665,7 @@ serve(async (req: Request): Promise<Response> => {
     let currentUserId = ""
     if (authHeader) {
       const token = authHeader.replace("Bearer ", "")
-      const { data: { user } } = await supabase.auth.getUser(token)
+      const { data: { user } } = await verifyToken(token)
       if (user) currentUserId = user.id
     }
 
@@ -1655,7 +1702,7 @@ serve(async (req: Request): Promise<Response> => {
     let currentUserId = ""
     if (authHeader) {
       const token = authHeader.replace("Bearer ", "")
-      const { data: { user } } = await supabase.auth.getUser(token)
+      const { data: { user } } = await verifyToken(token)
       if (user) currentUserId = user.id
     }
 
