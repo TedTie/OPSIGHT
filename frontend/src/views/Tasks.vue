@@ -1435,7 +1435,7 @@ const submitTask = async () => {
 
     // 处理用户分配：将 assigned_to 转换为 assigned_user_ids 数组
     if (taskForm.assignment_type === 'user' && taskForm.assigned_to) {
-      submitData.assigned_user_ids = [parseInt(taskForm.assigned_to)]
+      submitData.assigned_user_ids = [taskForm.assigned_to]  // Keep as string (UUID)
     } else {
       submitData.assigned_user_ids = []
     }

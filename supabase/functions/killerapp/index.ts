@@ -1366,23 +1366,41 @@ serve(async (req: Request): Promise<Response> => {
     const authHeader = req.headers.get("Authorization")
     if (!authHeader) return json({ detail: "Unauthorized" }, 401)
     const token = authHeader.replace("Bearer ", "")
-    const { data: { user } } = await verifyToken(token)
+
+    let user
+    try {
+      const verifyResult = await verifyToken(token)
+      user = verifyResult?.data?.user
+    } catch (e) {
+      return json({ detail: "Invalid token" }, 401)
+    }
+
     if (!user) return json({ detail: "Unauthorized" }, 401)
 
     // Get user role and group
-    const { data: userAccount } = await supabase
+    const { data: userAccount, error: userError } = await supabase
       .from("user_account")
       .select("role, group_id")
       .eq("id", user.id)
       .single()
 
-    if (!userAccount) return json({ detail: "User not found" }, 404)
+    if (userError || !userAccount) return json({ detail: "User not found" }, 404)
 
     const { role, group_id } = userAccount as any
 
-    // Build query with role-based filtering
-    let query = await buildTaskFilterByRole(supabase, user.id, role, group_id)
-    query = query.select("*", { count: "exact" })
+    // Build query - simplified for now
+    let query = supabase.from("tasks").select("*", { count: "exact" })
+
+    // Apply simple role-based filtering
+    if (role === 'user') {
+      // Regular users: filter by assignee_id for now (legacy support)
+      // TODO: Add support for assigned_user_ids array
+      query = query.eq("assignee_id", user.id)
+    } else if (role === 'admin' && group_id) {
+      // Admins: for now, show all tasks (will refine later)
+      // TODO: Filter by group membership
+    }
+    // super_admin: no filtering
 
     // Apply pagination
     const page = Number(u.searchParams.get("page") || "1")
@@ -1403,11 +1421,16 @@ serve(async (req: Request): Promise<Response> => {
     const authHeader = req.headers.get("Authorization")
     if (authHeader) {
       const token = authHeader.replace("Bearer ", "")
-      const { data: { user } } = await verifyToken(token)
-      if (user) {
-        if (!payload.assignee_id) payload.assignee_id = user.id
-        // tasks table usually doesn't have created_by, but if it does:
-        // payload.created_by = user.id 
+      try {
+        const verifyResult = await verifyToken(token)
+        const user = verifyResult?.data?.user
+        if (user) {
+          if (!payload.assignee_id) payload.assignee_id = user.id
+          // tasks table usually doesn't have created_by, but if it does:
+          // payload.created_by = user.id 
+        }
+      } catch (e) {
+        // Token invalid, but continue with request
       }
     }
 
@@ -1589,19 +1612,29 @@ serve(async (req: Request): Promise<Response> => {
     const authHeader = req.headers.get("Authorization")
     if (!authHeader) return json({ detail: "Unauthorized" }, 401)
     const token = authHeader.replace("Bearer ", "")
-    const { data: { user } } = await verifyToken(token)
+
+    let user
+    try {
+      const verifyResult = await verifyToken(token)
+      user = verifyResult?.data?.user
+    } catch (e) {
+      return json({ detail: "Invalid token" }, 401)
+    }
     if (!user) return json({ detail: "Unauthorized" }, 401)
 
-    const { data: userAccount } = await supabase
+    const { data: userAccount, error: userError } = await supabase
       .from("user_account")
       .select("role, group_id")
       .eq("id", user.id)
       .single()
-    if (!userAccount) return json({ detail: "User not found" }, 404)
+    if (userError || !userAccount) return json({ detail: "User not found" }, 404)
     const { role, group_id } = userAccount as any
 
-    let query = await buildTaskFilterByRole(supabase, user.id, role, group_id)
-    query = query.select("status")
+    let query = supabase.from("tasks").select("status")
+    if (role === 'user') {
+      query = query.eq("assignee_id", user.id)
+    }
+
     const { data, error } = await query
     if (error) return json({ detail: error.message }, 500)
     const total = (data || []).length
@@ -1617,19 +1650,29 @@ serve(async (req: Request): Promise<Response> => {
     const authHeader = req.headers.get("Authorization")
     if (!authHeader) return json({ detail: "Unauthorized" }, 401)
     const token = authHeader.replace("Bearer ", "")
-    const { data: { user } } = await verifyToken(token)
+
+    let user
+    try {
+      const verifyResult = await verifyToken(token)
+      user = verifyResult?.data?.user
+    } catch (e) {
+      return json({ detail: "Invalid token" }, 401)
+    }
     if (!user) return json({ detail: "Unauthorized" }, 401)
 
-    const { data: userAccount } = await supabase
+    const { data: userAccount, error: userError } = await supabase
       .from("user_account")
       .select("role, group_id")
       .eq("id", user.id)
       .single()
-    if (!userAccount) return json({ detail: "User not found" }, 404)
+    if (userError || !userAccount) return json({ detail: "User not found" }, 404)
     const { role, group_id } = userAccount as any
 
-    let query = await buildTaskFilterByRole(supabase, user.id, role, group_id)
-    query = query.select("status")
+    let query = supabase.from("tasks").select("status")
+    if (role === 'user') {
+      query = query.eq("assignee_id", user.id)
+    }
+
     const { data, error } = await query
     if (error) return json({ detail: error.message }, 500)
     const total = (data || []).length
@@ -2237,21 +2280,30 @@ serve(async (req: Request): Promise<Response> => {
     const authHeader = req.headers.get("Authorization")
     if (!authHeader) return json({ detail: "Unauthorized" }, 401)
     const token = authHeader.replace("Bearer ", "")
-    const { data: { user } } = await verifyToken(token)
+
+    let user
+    try {
+      const verifyResult = await verifyToken(token)
+      user = verifyResult?.data?.user
+    } catch (e) {
+      return json({ detail: "Invalid token" }, 401)
+    }
     if (!user) return json({ detail: "Unauthorized" }, 401)
 
-    const { data: userAccount } = await supabase
+    const { data: userAccount, error: userError } = await supabase
       .from("user_account")
       .select("role, group_id")
       .eq("id", user.id)
       .single()
-    if (!userAccount) return json({ detail: "User not found" }, 404)
+    if (userError || !userAccount) return json({ detail: "User not found" }, 404)
     const { role, group_id } = userAccount as any
 
     const start = u.searchParams.get("start_date") || ""
     const end = u.searchParams.get("end_date") || ""
-    let q = await buildTaskFilterByRole(supabase, user.id, role, group_id)
-    q = q.select("status,created_at")
+    let q = supabase.from("tasks").select("status,created_at")
+    if (role === 'user') {
+      q = q.eq("assignee_id", user.id)
+    }
     if (start) q = q.gte("created_at", start)
     if (end) q = q.lte("created_at", end + "T23:59:59")
 
@@ -2275,21 +2327,30 @@ serve(async (req: Request): Promise<Response> => {
     const authHeader = req.headers.get("Authorization")
     if (!authHeader) return json({ detail: "Unauthorized" }, 401)
     const token = authHeader.replace("Bearer ", "")
-    const { data: { user } } = await verifyToken(token)
+
+    let user
+    try {
+      const verifyResult = await verifyToken(token)
+      user = verifyResult?.data?.user
+    } catch (e) {
+      return json({ detail: "Invalid token" }, 401)
+    }
     if (!user) return json({ detail: "Unauthorized" }, 401)
 
-    const { data: userAccount } = await supabase
+    const { data: userAccount, error: userError } = await supabase
       .from("user_account")
       .select("role, group_id")
       .eq("id", user.id)
       .single()
-    if (!userAccount) return json({ detail: "User not found" }, 404)
+    if (userError || !userAccount) return json({ detail: "User not found" }, 404)
     const { role, group_id } = userAccount as any
 
     const start = u.searchParams.get("start_date") || ""
     const end = u.searchParams.get("end_date") || ""
-    let q = await buildTaskFilterByRole(supabase, user.id, role, group_id)
-    q = q.select("status,created_at")
+    let q = supabase.from("tasks").select("status,created_at")
+    if (role === 'user') {
+      q = q.eq("assignee_id", user.id)
+    }
     if (start) q = q.gte("created_at", start)
     if (end) q = q.lte("created_at", end + "T23:59:59")
 
