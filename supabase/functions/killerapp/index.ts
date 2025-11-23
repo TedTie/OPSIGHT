@@ -130,10 +130,15 @@ serve(async (req: Request): Promise<Response> => {
       return json({ user: adminUser, token })
     }
     const { data, error } = await supabase.from("user_account").select("id,username,role,is_active,hashed_password,avatar_url").eq("username", username).single()
-    if (error || !data) return json({ detail: "用户名不存在或账户已被禁用" }, 401)
-    if (!(data as any).is_active) return json({ detail: "用户名不存在或账户已被禁用" }, 401)
+    if (error) {
+      console.error("Login DB Error:", error)
+      return json({ detail: `Login failed: DB Error - ${error.message}` }, 401)
+    }
+    if (!data) return json({ detail: "Login failed: User not found" }, 401)
+    if (!(data as any).is_active) return json({ detail: "Login failed: User inactive" }, 401)
+
     const ok = (data as any).hashed_password ? bcrypt.compareSync(password, String((data as any).hashed_password)) : false
-    if (!ok) return json({ detail: "用户名不存在或账户已被禁用" }, 401)
+    if (!ok) return json({ detail: "Login failed: Password mismatch" }, 401)
 
     const userObj = { id: (data as any).id, username: (data as any).username, role: (data as any).role, avatar_url: (data as any).avatar_url }
     const token = await signToken(userObj)
@@ -2135,6 +2140,50 @@ serve(async (req: Request): Promise<Response> => {
     await supabase.from("settings_ai").update(defaultAISettings).eq("id", 1)
     await supabase.from("settings_system").update(defaultSystemSettings).eq("id", 1)
     return json({ success: true })
+  }
+
+  if (afterFn.startsWith("api/v1/analytics/stats") && req.method === "GET") {
+    const start = u.searchParams.get("start_date") || ""
+    const end = u.searchParams.get("end_date") || ""
+    let q = supabase.from("tasks").select("status,created_at")
+    if (start) q = q.gte("created_at", start)
+    if (end) q = q.lte("created_at", end + "T23:59:59")
+
+    const { data, error } = await q
+    if (error) return json({ detail: error.message }, 500)
+
+    const total = (data || []).length
+    const completed = (data || []).filter(t => (t as any).status === "completed").length
+    const rate = total > 0 ? (completed / total) : 0
+
+    // Also get reports count
+    let rq = supabase.from("daily_reports").select("id", { count: "exact", head: true })
+    if (start) rq = rq.gte("work_date", start)
+    if (end) rq = rq.lte("work_date", end)
+    const { count: reports } = await rq
+
+    return json({ total_tasks: total, completed_tasks: completed, completion_rate: rate, total_reports: reports || 0 })
+  }
+
+  if (afterFn.startsWith("api/v1/analytics/charts") && req.method === "GET") {
+    const start = u.searchParams.get("start_date") || ""
+    const end = u.searchParams.get("end_date") || ""
+    let q = supabase.from("tasks").select("status,created_at")
+    if (start) q = q.gte("created_at", start)
+    if (end) q = q.lte("created_at", end + "T23:59:59")
+
+    const { data, error } = await q
+    if (error) return json({ detail: error.message }, 500)
+
+    const bucket: Record<string, { created: number; completed: number }> = {}
+    for (const t of data || []) {
+      const d = new Date((t as any).created_at).toISOString().slice(0, 10)
+      if (!bucket[d]) bucket[d] = { created: 0, completed: 0 }
+      bucket[d].created++
+      if ((t as any).status === "completed") bucket[d].completed++
+    }
+    const series = Object.keys(bucket).sort().map(date => ({ date, ...bucket[date] }))
+    return json({ series })
   }
 
   return notFound()
