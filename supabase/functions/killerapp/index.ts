@@ -941,16 +941,56 @@ serve(async (req: Request): Promise<Response> => {
     const payload = await parseBody(req) as { task_id?: number; amount?: number; quantity?: number; remark?: string }
     const tid = Number(payload.task_id || 0)
     if (!tid) return json({ detail: "缺少任务ID" }, 422)
-    const { data: tdata, error: terr } = await supabase.from("tasks").select("current_amount,current_quantity").eq("id", tid).single()
+
+    const authHeader = req.headers.get("Authorization")
+    if (!authHeader) return json({ detail: "Unauthorized" }, 401)
+    const token = authHeader.replace("Bearer ", "")
+    const { data: { user } } = await supabase.auth.getUser(token)
+    if (!user) return json({ detail: "Unauthorized" }, 401)
+
+    const { data: tdata, error: terr } = await supabase.from("tasks").select("task_type,current_amount,current_quantity").eq("id", tid).single()
     if (terr) return json({ detail: terr.message }, 500)
-    const curAmt = Number((tdata as any)?.current_amount || 0)
-    const curQty = Number((tdata as any)?.current_quantity || 0)
+
+    let recordType = ''
+    let value = 0
+
+    if (payload.amount && (tdata as any).task_type === 'amount') {
+      recordType = 'amount'
+      value = payload.amount
+    } else if (payload.quantity && (tdata as any).task_type === 'quantity') {
+      recordType = 'quantity'
+      value = payload.quantity
+    }
+
+    if (!recordType) return json({ detail: "缺少有效的参与数据或任务类型不匹配" }, 422)
+
+    // Insert record
+    const { error: insertError } = await supabase.from("task_records").insert({
+      task_id: tid,
+      user_id: user.id,
+      record_type: recordType,
+      value: value,
+      remark: payload.remark
+    })
+
+    if (insertError) return json({ detail: insertError.message }, 500)
+
+    // Calculate total and update task
+    const { data: records } = await supabase
+      .from("task_records")
+      .select("value")
+      .eq("task_id", tid)
+      .eq("record_type", recordType)
+
+    const total = (records || []).reduce((sum, r) => sum + Number((r as any).value), 0)
     const next: Record<string, unknown> = {}
-    if (typeof payload.amount === "number" && !Number.isNaN(payload.amount) && payload.amount > 0) next.current_amount = curAmt + payload.amount
-    if (typeof payload.quantity === "number" && !Number.isNaN(payload.quantity) && payload.quantity > 0) next.current_quantity = curQty + payload.quantity
-    if (!Object.keys(next).length) return json({ detail: "缺少有效的参与数据" }, 422)
+
+    if (recordType === 'amount') next.current_amount = total
+    else next.current_quantity = total
+
     const { error } = await supabase.from("tasks").update(next).eq("id", tid)
     if (error) return json({ detail: error.message }, 500)
+
     return json({ success: true })
   }
 
@@ -958,8 +998,45 @@ serve(async (req: Request): Promise<Response> => {
     const segs = afterFn.split("/")
     const id = Number(segs[4])
     const payload = await parseBody(req) as { is_completed?: boolean }
-    const { error } = await supabase.from("tasks").update({ is_completed: !!payload.is_completed }).eq("id", id)
+
+    const authHeader = req.headers.get("Authorization")
+    if (!authHeader) return json({ detail: "Unauthorized" }, 401)
+    const token = authHeader.replace("Bearer ", "")
+    const { data: { user } } = await supabase.auth.getUser(token)
+    if (!user) return json({ detail: "Unauthorized" }, 401)
+
+    // Upsert completion record
+    const { error } = await supabase.from("task_completions").upsert({
+      task_id: id,
+      user_id: user.id,
+      is_completed: !!payload.is_completed,
+      completed_at: payload.is_completed ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString()
+    }, {
+      onConflict: 'task_id,user_id'
+    })
+
     if (error) return json({ detail: error.message }, 500)
+
+    // Update participant_count and completed_count
+    const { count: totalCount } = await supabase
+      .from("task_completions")
+      .select("*", { count: "exact", head: true })
+      .eq("task_id", id)
+
+    const { count: completedCount } = await supabase
+      .from("task_completions")
+      .select("*", { count: "exact", head: true })
+      .eq("task_id", id)
+      .eq("is_completed", true)
+
+    const { error: updateError } = await supabase.from("tasks").update({
+      participant_count: totalCount || 0,
+      completed_count: completedCount || 0
+    }).eq("id", id)
+
+    if (updateError) console.error("Failed to update task counts", updateError)
+
     return json({ success: true })
   }
 
@@ -1231,9 +1308,134 @@ serve(async (req: Request): Promise<Response> => {
   if (/^api\/v1\/tasks\/[0-9]+$/.test(afterFn) && req.method === "GET") {
     const segs = afterFn.split("/")
     const id = Number(segs[3])
-    const { data, error } = await supabase.from("tasks").select("*").eq("id", id).single()
+    const viewUserId = u.searchParams.get("view_user_id") || ""
+    const scope = u.searchParams.get("scope") || ""
+
+    const { data: task, error } = await supabase.from("tasks").select("*").eq("id", id).single()
     if (error) return json({ detail: error.message }, 500)
-    return json(data)
+
+    // Calculate participant count
+    let participantCount = 0
+    if (task.assignment_type === 'user') {
+      participantCount = (task.assigned_user_ids || []).length
+    } else if (task.assignment_type === 'group') {
+      const groupIds = task.assigned_group_ids || []
+      if (groupIds.length > 0) {
+        const { count } = await supabase
+          .from("user_account")
+          .select("*", { count: "exact", head: true })
+          .in("group_id", groupIds)
+          .eq("is_active", true)
+        participantCount = count || 0
+      }
+    } else if (task.assignment_type === 'all') {
+      const { count } = await supabase
+        .from("user_account")
+        .select("*", { count: "exact", head: true })
+        .eq("is_active", true)
+      participantCount = count || 0
+    }
+
+    // Get current user for personal stats
+    const authHeader = req.headers.get("Authorization")
+    let currentUserId = ""
+    if (authHeader) {
+      const token = authHeader.replace("Bearer ", "")
+      const { data: { user } } = await supabase.auth.getUser(token)
+      if (user) currentUserId = user.id
+    }
+
+    const targetUserId = viewUserId || currentUserId
+
+    // Calculate statistics based on task type
+    if (task.task_type === 'jielong') {
+      task.aggregate_jielong_target_count = (task.jielong_target_count || 0) * participantCount
+
+      if (targetUserId) {
+        const { count } = await supabase
+          .from("task_jielong_entries")
+          .select("*", { count: "exact", head: true })
+          .eq("task_id", id)
+          .eq("user_id", targetUserId)
+
+        task.personal_jielong_current_count = count || 0
+        task.personal_jielong_target_count = task.jielong_target_count
+        task.personal_jielong_progress = task.jielong_target_count > 0
+          ? (count || 0) / task.jielong_target_count
+          : 0
+      }
+
+      task.aggregate_jielong_progress = task.aggregate_jielong_target_count > 0
+        ? (task.jielong_current_count || 0) / task.aggregate_jielong_target_count
+        : 0
+
+    } else if (task.task_type === 'amount') {
+      task.aggregate_target_amount = (task.target_amount || 0) * participantCount
+
+      if (targetUserId) {
+        const { data: records } = await supabase
+          .from("task_records")
+          .select("value")
+          .eq("task_id", id)
+          .eq("user_id", targetUserId)
+          .eq("record_type", 'amount')
+
+        const personalTotal = (records || []).reduce((sum, r) => sum + Number((r as any).value), 0)
+        task.personal_current_amount = personalTotal
+        task.personal_target_amount = task.target_amount
+        task.personal_progress = task.target_amount > 0
+          ? personalTotal / task.target_amount
+          : 0
+      }
+
+      task.aggregate_progress = task.aggregate_target_amount > 0
+        ? (task.current_amount || 0) / task.aggregate_target_amount
+        : 0
+
+    } else if (task.task_type === 'quantity') {
+      task.aggregate_target_quantity = (task.target_quantity || 0) * participantCount
+
+      if (targetUserId) {
+        const { data: records } = await supabase
+          .from("task_records")
+          .select("value")
+          .eq("task_id", id)
+          .eq("user_id", targetUserId)
+          .eq("record_type", 'quantity')
+
+        const personalTotal = (records || []).reduce((sum, r) => sum + Number((r as any).value), 0)
+        task.personal_current_quantity = personalTotal
+        task.personal_target_quantity = task.target_quantity
+        task.personal_progress = task.target_quantity > 0
+          ? personalTotal / task.target_quantity
+          : 0
+      }
+
+      task.aggregate_progress = task.aggregate_target_quantity > 0
+        ? (task.current_quantity || 0) / task.aggregate_target_quantity
+        : 0
+
+    } else if (task.task_type === 'checkbox') {
+      task.aggregate_target_count = participantCount
+
+      if (targetUserId) {
+        const { data: completion } = await supabase
+          .from("task_completions")
+          .select("is_completed")
+          .eq("task_id", id)
+          .eq("user_id", targetUserId)
+          .single()
+
+        task.personal_is_completed = (completion as any)?.is_completed || false
+      }
+
+      task.aggregate_progress = participantCount > 0
+        ? (task.completed_count || 0) / participantCount
+        : 0
+    }
+
+    task.participant_count = participantCount
+    return json(task)
   }
 
   if (/^api\/v1\/tasks\/[0-9]+$/.test(afterFn) && req.method === "PUT") {
@@ -1330,7 +1532,35 @@ serve(async (req: Request): Promise<Response> => {
     const id = Number(segs[3])
     const userId = u.searchParams.get("user_id") || ""
     const scope = u.searchParams.get("scope") || ""
-    const items: any[] = []
+
+    // Get current user ID for 'mine' scope default
+    const authHeader = req.headers.get("Authorization")
+    let currentUserId = ""
+    if (authHeader) {
+      const token = authHeader.replace("Bearer ", "")
+      const { data: { user } } = await supabase.auth.getUser(token)
+      if (user) currentUserId = user.id
+    }
+
+    let query = supabase
+      .from("task_jielong_entries")
+      .select("*, user:user_account!user_id(username)")
+      .eq("task_id", id)
+      .order("sequence", { ascending: true })
+
+    if (userId || scope === 'mine') {
+      const targetUserId = userId || currentUserId
+      if (targetUserId) query = query.eq("user_id", targetUserId)
+    }
+
+    const { data, error } = await query
+    if (error) return json({ detail: error.message }, 500)
+
+    const items = (data || []).map((item: any) => ({
+      ...item,
+      user_name: item.user?.username || 'Unknown'
+    }))
+
     return json({ items, task_id: id, scope, user_id: userId || null })
   }
 
@@ -1338,10 +1568,42 @@ serve(async (req: Request): Promise<Response> => {
     const segs = afterFn.split("/")
     const id = Number(segs[3])
     const payload = await parseBody(req) as Record<string, unknown>
-    const { data: tdata } = await supabase.from("tasks").select("jielong_current_count").eq("id", id).single()
-    const cur = Number((tdata as any)?.jielong_current_count || 0)
-    const { error } = await supabase.from("tasks").update({ jielong_current_count: cur + 1 }).eq("id", id)
+
+    const authHeader = req.headers.get("Authorization")
+    if (!authHeader) return json({ detail: "Unauthorized" }, 401)
+    const token = authHeader.replace("Bearer ", "")
+    const { data: { user } } = await supabase.auth.getUser(token)
+    if (!user) return json({ detail: "Unauthorized" }, 401)
+
+    // Get next sequence
+    const { data: existingEntries } = await supabase
+      .from("task_jielong_entries")
+      .select("sequence")
+      .eq("task_id", id)
+      .order("sequence", { ascending: false })
+      .limit(1)
+
+    const nextSeq = (existingEntries?.[0]?.sequence || 0) + 1
+
+    const { error } = await supabase.from("task_jielong_entries").insert({
+      task_id: id,
+      user_id: user.id,
+      sequence: nextSeq,
+      id_value: payload.id,
+      remark: payload.remark,
+      intention: payload.intention,
+      custom_field: payload.custom_field
+    })
+
     if (error) return json({ detail: error.message }, 500)
+
+    // Update task current count
+    const { error: updateError } = await supabase.from("tasks")
+      .update({ jielong_current_count: nextSeq })
+      .eq("id", id)
+
+    if (updateError) console.error("Failed to update task count", updateError)
+
     return json({ success: true })
   }
 
@@ -1350,7 +1612,35 @@ serve(async (req: Request): Promise<Response> => {
     const id = Number(segs[3])
     const userId = u.searchParams.get("user_id") || ""
     const scope = u.searchParams.get("scope") || ""
-    const items: any[] = []
+
+    // Get current user ID for 'mine' scope default
+    const authHeader = req.headers.get("Authorization")
+    let currentUserId = ""
+    if (authHeader) {
+      const token = authHeader.replace("Bearer ", "")
+      const { data: { user } } = await supabase.auth.getUser(token)
+      if (user) currentUserId = user.id
+    }
+
+    let query = supabase
+      .from("task_records")
+      .select("*, user:user_account!user_id(username)")
+      .eq("task_id", id)
+      .order("created_at", { ascending: false })
+
+    if (userId || scope === 'mine') {
+      const targetUserId = userId || currentUserId
+      if (targetUserId) query = query.eq("user_id", targetUserId)
+    }
+
+    const { data, error } = await query
+    if (error) return json({ detail: error.message }, 500)
+
+    const items = (data || []).map((item: any) => ({
+      ...item,
+      user_name: item.user?.username || 'Unknown'
+    }))
+
     return json({ items, task_id: id, scope, user_id: userId || null })
   }
 
@@ -1359,7 +1649,35 @@ serve(async (req: Request): Promise<Response> => {
     const id = Number(segs[3])
     const userId = u.searchParams.get("user_id") || ""
     const scope = u.searchParams.get("scope") || ""
-    const items: any[] = []
+
+    // Get current user ID for 'mine' scope default
+    const authHeader = req.headers.get("Authorization")
+    let currentUserId = ""
+    if (authHeader) {
+      const token = authHeader.replace("Bearer ", "")
+      const { data: { user } } = await supabase.auth.getUser(token)
+      if (user) currentUserId = user.id
+    }
+
+    let query = supabase
+      .from("task_completions")
+      .select("*, user:user_account!user_id(username)")
+      .eq("task_id", id)
+      .order("updated_at", { ascending: false })
+
+    if (userId || scope === 'mine') {
+      const targetUserId = userId || currentUserId
+      if (targetUserId) query = query.eq("user_id", targetUserId)
+    }
+
+    const { data, error } = await query
+    if (error) return json({ detail: error.message }, 500)
+
+    const items = (data || []).map((item: any) => ({
+      ...item,
+      user_name: item.user?.username || 'Unknown'
+    }))
+
     return json({ items, task_id: id, scope, user_id: userId || null })
   }
 
