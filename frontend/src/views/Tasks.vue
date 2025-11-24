@@ -1329,7 +1329,7 @@ const editTask = (task) => {
     priority: task.priority,
     assignment_type: task.assignment_type,
     assigned_to: task.assigned_to,
-    target_group_id: task.target_group_id,
+    target_group_id: task.group_id || (task.assigned_group_ids && task.assigned_group_ids.length > 0 ? task.assigned_group_ids[0] : null),
     target_identity: task.target_identity,
     due_date: task.due_date,
     target_amount: task.target_amount,
@@ -1345,8 +1345,6 @@ const editTask = (task) => {
   
   dialogVisible.value = true
 }
-
-// 查看任务详情 - 已移动到 script setup 底部
 
 // 刷新任务详情
 const refreshTaskDetail = async () => {
@@ -1429,8 +1427,11 @@ const submitTask = async () => {
     // 处理组分配：将target_group_id转换为assigned_group_ids数组
     if (taskForm.assignment_type === 'group' && taskForm.target_group_id) {
       submitData.assigned_group_ids = [taskForm.target_group_id]
+      // 关键修复：同时设置 group_id 字段，确保后端能正确保存
+      submitData.group_id = taskForm.target_group_id
     } else {
       submitData.assigned_group_ids = []
+      submitData.group_id = null
     }
 
     // 处理用户分配：将 assigned_to 转换为 assigned_user_ids 数组
@@ -2017,18 +2018,6 @@ const openTaskDetailById = async (taskId) => {
     ElMessage.error('打开任务详情失败')
   }
 }
-
-onMounted(() => {
-  // 首次加载任务列表
-  fetchTasks()
-  // 如果存在 openTaskId 查询参数，自动打开详情（“我的”视角）
-  const openId = Number(route.query.openTaskId)
-  if (openId) {
-    openTaskDetailById(openId)
-  }
-})
-
-// 获取分配类型文本
 const getAssignmentTypeText = (assignmentType) => {
   const typeMap = {
     'user': '指定用户',
@@ -2045,7 +2034,14 @@ const getAssignmentTarget = (task) => {
     case 'user':
       return task.assigned_to_username || `用户ID: ${task.assigned_to}`
     case 'group':
-      return task.target_group_name || `组ID: ${task.target_group_id}`
+      // 尝试从 groups 列表中查找组名
+      if (task.group_id || (task.assigned_group_ids && task.assigned_group_ids.length > 0)) {
+        const gid = task.group_id || task.assigned_group_ids[0]
+        const group = groups.value.find(g => g.id === gid)
+        if (group) return group.name
+        return task.target_group_name || `组ID: ${gid}`
+      }
+      return task.target_group_name || `组ID: ${task.target_group_id || '-'}`
     case 'identity':
       return task.target_identity || '-'
     case 'all':
@@ -2054,8 +2050,6 @@ const getAssignmentTarget = (task) => {
       return '-'
   }
 }
-
-
 
 // 监听过滤器变化
 watch(filters, () => {
@@ -2071,6 +2065,12 @@ onMounted(() => {
     fetchUsers()
   }
   fetchGroups()
+  
+  // 如果存在 openTaskId 查询参数，自动打开详情（“我的”视角）
+  const openId = Number(route.query.openTaskId)
+  if (openId) {
+    openTaskDetailById(openId)
+  }
 })
 </script>
 
