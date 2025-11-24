@@ -1353,13 +1353,86 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if (afterFn.startsWith("api/v1/ai/answer") && req.method === "POST") {
-    const body = await parseBody(req) as { question?: string }
-    const q = String(body.question || "")
-    let answer = "请在系统中查找对应功能入口。"
-    // HARD DELETE: This will permanently remove the task.
-    const { error } = await supabase.from("tasks").delete().eq("id", id)
+    return json({ success: true, answer: "请在系统中查找对应功能入口。" })
+  }
+
+  if (afterFn === "api/v1/tasks" && req.method === "GET") {
+    const authHeader = req.headers.get("Authorization")
+    if (!authHeader) return json({ detail: "Unauthorized" }, 401)
+    const token = authHeader.replace("Bearer ", "")
+
+    let user
+    try {
+      const verifyResult = await verifyToken(token)
+      user = verifyResult?.data?.user
+    } catch (e) {
+      return json({ detail: "Invalid token" }, 401)
+    }
+
+    if (!user) return json({ detail: "Unauthorized" }, 401)
+
+    const { data: userAccount, error: userError } = await supabase
+      .from("user_account")
+      .select("role, group_id")
+      .eq("id", user.id)
+      .single()
+
+    if (userError || !userAccount) return json({ detail: "User not found" }, 404)
+
+    const { role, group_id } = userAccount as any
+
+    // Build query with explicit left join for groups
+    let query = supabase.from("tasks").select("*, groups!left(name)", { count: "exact" })
+
+    // Apply role-based filtering
+    if (role === 'user') {
+      const conditions = [
+        `assignee_id.eq.${user.id}`,
+        `assignment_type.eq.all`,
+        `created_by.eq.${user.id}`
+      ]
+      conditions.push(`assigned_user_ids.cs.{${user.id}}`)
+
+      if (group_id) {
+        conditions.push(`assigned_group_ids.cs.{${group_id}}`)
+        conditions.push(`group_id.eq.${group_id}`)
+      }
+
+      query = query.or(conditions.join(','))
+    }
+    // Admin and Super Admin see all tasks
+
+    const page = Number(u.searchParams.get("page") || "1")
+    const size = Number(u.searchParams.get("size") || "10")
+    const start = (page - 1) * size
+
+    query = query.order('created_at', { ascending: false })
+
+    const { data, error, count } = await query.range(start, start + size - 1)
     if (error) return json({ detail: error.message }, 500)
-    return json({ success: true })
+
+    const items = (data || []).map((t: any) => {
+      if (t.groups?.name) {
+        t.target_group_name = t.groups.name
+      }
+      delete t.groups
+      return t
+    })
+
+    return json({ items, total: count || 0, page, size })
+  }
+
+  if (/^api\/v1\/tasks\/[0-9]+$/.test(afterFn) && req.method === "GET") {
+    const segs = afterFn.split("/")
+    const id = Number(segs[3])
+    const { data: task, error } = await supabase.from("tasks").select("*, groups!left(name)").eq("id", id).single()
+    if (error) return json({ detail: error.message }, 500)
+
+    if ((task as any).groups?.name) {
+      (task as any).target_group_name = (task as any).groups.name
+    }
+    delete (task as any).groups
+    return json(task)
   }
 
   if (/^api\/v1\/tasks\/[0-9]+\/status$/.test(afterFn) && req.method === "PUT") {
